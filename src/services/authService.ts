@@ -8,6 +8,15 @@ type AuthPayload = {
   name?: string;
 };
 
+type ResetPasswordPayload = {
+  email: string;
+};
+
+type UpdatePasswordPayload = {
+  accessToken: string;
+  password: string;
+};
+
 type AuthResponse = {
   access_token?: string;
   token?: string;
@@ -57,6 +66,24 @@ async function postAuth(path: string, payload: AuthPayload) {
   }
 
   return response.json() as Promise<AuthResponse>;
+}
+
+async function postJson<TPayload extends Record<string, unknown>>(
+  path: string,
+  payload: TPayload
+) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error ?? `Request failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export const authService = {
@@ -128,5 +155,13 @@ export const authService = {
     this.setToken(token);
     this.setUser(pickUser(data, payload));
     return data;
+  },
+
+  async requestPasswordReset(payload: ResetPasswordPayload) {
+    return postJson("/api/auth/forgot-password", payload);
+  },
+
+  async updatePassword(payload: UpdatePasswordPayload) {
+    return postJson("/api/auth/reset-password", payload);
   },
 };

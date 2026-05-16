@@ -23,10 +23,11 @@ export default function AuthScreen({
   gateMessage,
   onAuthenticated,
 }: AuthScreenProps) {
-  const [mode, setMode] = useState<"login" | "signup">(initialMode);
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -46,6 +47,25 @@ export default function AuthScreen({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setSuccess("");
+
+    if (mode === "forgot") {
+      if (!form.email.trim()) {
+        setError("Please enter your email address.");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await authService.requestPasswordReset({ email: form.email });
+        setSuccess("Reset link sent. Please check your email inbox.");
+      } catch {
+        setError("Unable to send the reset email. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (!form.email.trim() || !form.password.trim()) {
       setError("Please enter your email and password.");
@@ -109,24 +129,40 @@ export default function AuthScreen({
             <button
               type="button"
               className={mode === "login" ? "active" : ""}
-              onClick={() => setMode("login")}
+              onClick={() => {
+                setMode("login");
+                setError("");
+                setSuccess("");
+              }}
             >
               Sign in
             </button>
             <button
               type="button"
               className={mode === "signup" ? "active" : ""}
-              onClick={() => setMode("signup")}
+              onClick={() => {
+                setMode("signup");
+                setError("");
+                setSuccess("");
+              }}
             >
               Create account
             </button>
           </div>
 
           <div className="auth-heading">
-            <h2>{mode === "login" ? "Welcome back" : "Create Account"}</h2>
+            <h2>
+              {mode === "login"
+                ? "Welcome back"
+                : mode === "forgot"
+                  ? "Reset password"
+                  : "Create Account"}
+            </h2>
             <p>
               {mode === "login"
                 ? "Ask any legal question with your secure Aythiya account."
+                : mode === "forgot"
+                  ? "Enter your email and we’ll send a secure password reset link."
                 : "Create your secure Aythiya account to start chatting."}
             </p>
           </div>
@@ -150,23 +186,25 @@ export default function AuthScreen({
             onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
           />
 
-          <AuthField
-            icon={<Lock size={17} />}
-            label="Password"
-            value={form.password}
-            placeholder="••••••••"
-            type={showPassword ? "text" : "password"}
-            rightIcon={
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            }
-            onChange={(value) => setForm((prev) => ({ ...prev, password: value }))}
-          />
+          {mode !== "forgot" && (
+            <AuthField
+              icon={<Lock size={17} />}
+              label="Password"
+              value={form.password}
+              placeholder="••••••••"
+              type={showPassword ? "text" : "password"}
+              rightIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              }
+              onChange={(value) => setForm((prev) => ({ ...prev, password: value }))}
+            />
+          )}
 
           {mode === "signup" && (
             <>
@@ -193,15 +231,29 @@ export default function AuthScreen({
               <label>
                 <input type="checkbox" /> Remember me
               </label>
-              <a href="#">Forgot password?</a>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("forgot");
+                  setError("");
+                  setSuccess("");
+                }}
+              >
+                Forgot password?
+              </button>
             </div>
           )}
 
           {error && <p className="auth-error">{error}</p>}
+          {success && <p className="auth-success">{success}</p>}
 
           <button className="auth-submit" type="submit" disabled={loading}>
             {loading
-              ? "Authenticating..."
+              ? mode === "forgot"
+                ? "Sending reset link..."
+                : "Authenticating..."
+              : mode === "forgot"
+                ? "Send reset link"
               : mode === "login"
                 ? "Sign in"
                 : "Create Account"}
@@ -224,10 +276,18 @@ export default function AuthScreen({
           </button>
 
           <p className="auth-bottom">
-            {mode === "login" ? "Don’t have an account?" : "Already have an account?"}{" "}
+            {mode === "login"
+              ? "Don’t have an account?"
+              : mode === "forgot"
+                ? "Remember your password?"
+                : "Already have an account?"}{" "}
             <button
               type="button"
-              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              onClick={() => {
+                setMode(mode === "login" ? "signup" : "login");
+                setError("");
+                setSuccess("");
+              }}
             >
               {mode === "login" ? "Create Account" : "Sign in"}
             </button>
@@ -459,8 +519,12 @@ export default function AuthScreen({
           gap: 7px;
         }
 
-        .forgot-row a {
+        .forgot-row button {
           color: #0f172a;
+          border: 0;
+          background: transparent;
+          cursor: pointer;
+          font-weight: 900;
           text-decoration: none;
           text-transform: uppercase;
           font-size: 11px;
@@ -470,6 +534,16 @@ export default function AuthScreen({
           color: #dc2626;
           background: #fef2f2;
           border: 1px solid #fecaca;
+          padding: 9px 12px;
+          border-radius: 12px;
+          font-size: 13px;
+          margin-bottom: 12px;
+        }
+
+        .auth-success {
+          color: #166534;
+          background: #f0fdf4;
+          border: 1px solid #bbf7d0;
           padding: 9px 12px;
           border-radius: 12px;
           font-size: 13px;
