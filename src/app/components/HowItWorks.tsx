@@ -26,6 +26,7 @@ export default function HowItWorks() {
   return (
     <section
       id="how-it-works"
+      className="bg-slow-pan"
       style={{
         position: "relative",
         overflow: "hidden",
@@ -48,7 +49,7 @@ export default function HowItWorks() {
       />
 
       <div className="container" style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ textAlign: "center", marginBottom: 54 }}>
+        <div className="reveal-up" style={{ textAlign: "center", marginBottom: 54 }}>
           <h2
             style={{
               fontFamily: "Georgia, 'Times New Roman', serif",
@@ -63,7 +64,7 @@ export default function HowItWorks() {
         </div>
 
         <div
-          className="how-grid"
+          className="how-grid reveal-stagger"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
@@ -100,6 +101,7 @@ function StepCard({
 }) {
   return (
     <div
+      className="premium-card"
       style={{
         minHeight: 178,
         borderRadius: 18,

@@ -67,6 +67,7 @@ export default function Features() {
   return (
     <section
       id="features"
+      className="bg-slow-pan"
       style={{
         position: "relative",
         overflow: "hidden",
@@ -89,7 +90,7 @@ export default function Features() {
       />
 
       <div className="container" style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ textAlign: "center", marginBottom: 52 }}>
+        <div className="reveal-up" style={{ textAlign: "center", marginBottom: 52 }}>
           <h2
             style={{
               fontFamily: "Georgia, 'Times New Roman', serif",
@@ -118,7 +119,7 @@ export default function Features() {
         </div>
 
         <div
-          className="features-grid"
+          className="features-grid reveal-stagger"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
@@ -159,6 +160,7 @@ function FeatureCard({
 }) {
   return (
     <div
+      className="premium-card"
       style={{
         minHeight: 150,
         borderRadius: 16,

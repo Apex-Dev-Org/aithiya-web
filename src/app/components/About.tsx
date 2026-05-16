@@ -1,12 +1,12 @@
 "use client";
 export default function About() {
   return (
-    <section id="about" style={{ padding: "90px 0", background: "#fff" }}>
+    <section id="about" className="premium-section" style={{ padding: "90px 0", background: "#fff" }}>
       <div className="container">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }} className="about-grid">
 
           {/* Image */}
-          <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+          <div className="reveal-left" style={{ position: "relative", display: "flex", justifyContent: "center" }}>
             <img src="/lady_justice.png" alt="Lady Justice" style={{
               width: "min(1560px, 100%)", objectFit: "contain", position: "relative", zIndex: 1,
               animation: "floatBob 4s ease-in-out infinite"
@@ -15,7 +15,7 @@ export default function About() {
           </div>
 
           {/* Text */}
-          <div>
+          <div className="reveal-right">
             <span style={{
               background: "linear-gradient(135deg,#e8f0fe,#dbeafe)", color: "#2b7cdfff",
               padding: "6px 18px", borderRadius: 50, fontSize: 13, fontWeight: 600
@@ -32,14 +32,14 @@ export default function About() {
               Our AI is trained on Sri Lankan statutes, court precedents, and legal codes to provide accurate, context-aware answers in Sinhala, Tamil, and English.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
+            <div className="reveal-stagger" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
               {[
                 { icon: "🤖", t: "AI-Powered Answers" },
                 { icon: "🌐", t: "3 Language Support" },
                 { icon: "🔒", t: "100% Confidential" },
                 { icon: "⚡", t: "Instant Responses" },
               ].map(f => (
-                <div key={f.t} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div key={f.t} className="hover-lift" style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <span style={{
                     width: 36, height: 36, borderRadius: 10, background: "#e8f0fe",
                     display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0
@@ -49,7 +49,7 @@ export default function About() {
               ))}
             </div>
 
-            <a href="#contact" style={{
+            <a href="#contact" className="hover-lift shine-on-hover" style={{
               display: "inline-block", background: "linear-gradient(135deg,#1a5caa,#2e78d4)",
               color: "#fff", padding: "14px 32px", borderRadius: 50, fontWeight: 700, fontSize: 15,
               textDecoration: "none", boxShadow: "0 8px 24px rgba(26,92,170,0.3)",

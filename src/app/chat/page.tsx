@@ -4,15 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
-  BriefcaseBusiness,
   Check,
   FileText,
-  HelpCircle,
   Home,
   Loader2,
   Menu,
   Mic,
-  MoreVertical,
   Paperclip,
   Pin,
   PinOff,
@@ -26,6 +23,8 @@ import {
 } from "lucide-react";
 import { Message, ChatSession, MessageAttachment } from "../../types/chat";
 import { chatService } from "../../services/chatService";
+import { authService } from "../../services/authService";
+import AuthScreen from "../components/AuthScreen";
 
 type ChatSessionUi = ChatSession & {
   pinned?: boolean;
@@ -47,6 +46,8 @@ const welcomeMessage = (): Message => ({
 });
 
 export default function ChatPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [authUser, setAuthUser] = useState<{ name?: string; email?: string }>();
   const [input, setInput] = useState("");
   const [recentChats, setRecentChats] = useState<ChatSessionUi[]>([]);
   const [activeChatId, setActiveChatId] = useState("chat-main");
@@ -54,6 +55,7 @@ export default function ChatPage() {
     "chat-main": [welcomeMessage()],
   });
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -70,6 +72,13 @@ export default function ChatPage() {
   );
 
   useEffect(() => {
+    setIsAuthenticated(authService.isAuthenticated());
+    setAuthUser(authService.getUser());
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     chatService.fetchRecentChats().then((sessions) => {
       const hydrated = sessions.map((session, index) => ({
         ...session,
@@ -82,7 +91,7 @@ export default function ChatPage() {
         ...hydrated,
       ]);
     });
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -98,34 +107,65 @@ export default function ChatPage() {
     });
   };
 
-  const createNewChat = () => {
-    const id = `chat-${Date.now()}`;
-    const newSession: ChatSessionUi = {
-      id,
-      title: "Untitled legal chat",
-      date: today(),
-      preview: "Start a fresh question",
-      pinned: false,
-    };
+  const isBackendThread = (id: string) =>
+    !id.startsWith("chat-") && !id.startsWith("mock-") && id !== "chat-main";
+
+  const createNewChat = async () => {
+    let newSession: ChatSessionUi;
+
+    try {
+      const created = await chatService.createThread("Untitled legal chat");
+      newSession = {
+        ...created,
+        date: "Today",
+        preview: "Start a fresh question",
+        pinned: false,
+      };
+    } catch (error) {
+      console.warn("Could not create backend thread, using local draft", error);
+      newSession = {
+        id: `chat-${Date.now()}`,
+        title: "Untitled legal chat",
+        date: today(),
+        preview: "Start a fresh question",
+        pinned: false,
+      };
+    }
 
     setRecentChats((prev) => [newSession, ...prev]);
-    setChatMessages((prev) => ({ ...prev, [id]: [welcomeMessage()] }));
-    setActiveChatId(id);
+    setChatMessages((prev) => ({ ...prev, [newSession.id]: [welcomeMessage()] }));
+    setActiveChatId(newSession.id);
     setInput("");
     setAttachments([]);
+    setPendingFiles([]);
     setSidebarOpen(false);
   };
 
-  const openChat = (id: string) => {
+  const openChat = async (id: string) => {
     setActiveChatId(id);
     setChatMessages((prev) => ({
       ...prev,
       [id]: prev[id] ?? [welcomeMessage()],
     }));
     setSidebarOpen(false);
+
+    if (!isBackendThread(id)) return;
+
+    const threadMessages = await chatService.fetchThreadMessages(id);
+    if (threadMessages.length) {
+      setChatMessages((prev) => ({ ...prev, [id]: threadMessages }));
+    }
   };
 
-  const deleteChat = (id: string) => {
+  const deleteChat = async (id: string) => {
+    if (isBackendThread(id)) {
+      try {
+        await chatService.deleteThread(id);
+      } catch (error) {
+        console.warn("Could not delete backend thread, removing locally", error);
+      }
+    }
+
     setRecentChats((prev) => prev.filter((chat) => chat.id !== id));
     setChatMessages((prev) => {
       const next = { ...prev };
@@ -153,17 +193,20 @@ export default function ChatPage() {
   const handleFiles = (files: FileList | null) => {
     if (!files?.length) return;
 
-    const mapped = Array.from(files).map((file) => ({
+    const fileArray = Array.from(files);
+    const mapped = fileArray.map((file) => ({
       name: file.name,
       type: file.type || "application/octet-stream",
       url: URL.createObjectURL(file),
     }));
 
     setAttachments((prev) => [...prev, ...mapped]);
+    setPendingFiles((prev) => [...prev, ...fileArray]);
   };
 
   const removeAttachment = (name: string) => {
     setAttachments((prev) => prev.filter((file) => file.name !== name));
+    setPendingFiles((prev) => prev.filter((file) => file.name !== name));
   };
 
   const handleSend = async () => {
@@ -181,11 +224,41 @@ export default function ChatPage() {
     updateActiveMessages((prev) => [...prev, userMessage]);
     setInput("");
     setAttachments([]);
+    setPendingFiles([]);
     setLoading(true);
+
+    let threadId = activeChatId;
+    if (!isBackendThread(threadId)) {
+      try {
+        const created = await chatService.createThread(content.slice(0, 48));
+        threadId = created.id;
+
+        setRecentChats((prev) => [
+          {
+            ...created,
+            date: "Today",
+            preview: content.slice(0, 54),
+            pinned: false,
+          },
+          ...prev.filter((chat) => chat.id !== activeChatId),
+        ]);
+
+        setChatMessages((prev) => {
+          const current = prev[activeChatId] ?? [welcomeMessage()];
+          const next = { ...prev, [created.id]: current };
+          delete next[activeChatId];
+          return next;
+        });
+
+        setActiveChatId(created.id);
+      } catch (error) {
+        console.warn("Could not create backend thread before sending", error);
+      }
+    }
 
     setRecentChats((prev) =>
       prev.map((chat) =>
-        chat.id === activeChatId
+        chat.id === threadId || chat.id === activeChatId
           ? {
               ...chat,
               title: chat.title === "Untitled legal chat" ? content.slice(0, 34) : chat.title,
@@ -197,25 +270,56 @@ export default function ChatPage() {
     );
 
     try {
-      const aiMessage = await chatService.sendMessage(userMessage.content);
-      updateActiveMessages((prev) => [...prev, aiMessage]);
+      if (isBackendThread(threadId)) {
+        const current = recentChats.find((chat) => chat.id === threadId);
+        if (current?.title === "Untitled legal chat") {
+          await chatService.updateThreadTitle(threadId, content.slice(0, 48));
+        }
+      }
+
+      const aiMessage = await chatService.sendMessage(userMessage.content, pendingFiles, isBackendThread(threadId) ? threadId : undefined);
+      setChatMessages((prev) => ({
+        ...prev,
+        [threadId]: [...(prev[threadId] ?? prev[activeChatId] ?? [welcomeMessage()]), aiMessage],
+      }));
     } catch (error) {
       console.error("Failed to send message", error);
-      updateActiveMessages((prev) => [
+      setChatMessages((prev) => ({
         ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: "ai",
-          content: "I could not process that right now. Please try again.",
-          timestamp: nowTime(),
-        },
-      ]);
+        [threadId]: [
+          ...(prev[threadId] ?? prev[activeChatId] ?? [welcomeMessage()]),
+          {
+            id: `err-${Date.now()}`,
+            role: "ai",
+            content: "I could not process that right now. Please try again.",
+            timestamp: nowTime(),
+          },
+        ],
+      }));
     } finally {
       setLoading(false);
     }
   };
 
   const activeChat = recentChats.find((chat) => chat.id === activeChatId);
+
+  if (isAuthenticated === null) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "#1d4ed8", fontWeight: 800 }}>
+        Loading secure workspace...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <AuthScreen
+        initialMode="login"
+        gateMessage="Login to use Aythiya Chat"
+        onAuthenticated={() => setIsAuthenticated(true)}
+      />
+    );
+  }
 
   return (
     <div className="chat-shell">
@@ -229,17 +333,15 @@ export default function ChatPage() {
           </button>
         </div>
 
+        <div className="sidebar-user">
+          <span>{authUser?.name ?? authUser?.email ?? "Aythiya User"}</span>
+          {authUser?.email && <small>{authUser.email}</small>}
+        </div>
+
         <button className="new-chat-btn" onClick={createNewChat}>
           <Plus size={18} />
           Create New Chat
         </button>
-
-        <nav className="chat-nav">
-          <NavItem active icon={<Sparkles size={18} />} label="AI Chat" />
-          <NavItem icon={<BriefcaseBusiness size={18} />} label="My Cases" />
-          <NavItem icon={<FileText size={18} />} label="Documents" />
-          <NavItem icon={<HelpCircle size={18} />} label="Help & Support" />
-        </nav>
 
         <div className="recent-wrap">
           <div className="recent-header">
@@ -276,14 +378,6 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="profile-card">
-          <div className="avatar">M</div>
-          <div>
-            <strong>Mahinda Raja</strong>
-            <span>Free legal guidance</span>
-          </div>
-          <MoreVertical size={17} />
-        </div>
       </aside>
 
       <main className="chat-main">
@@ -301,9 +395,6 @@ export default function ChatPage() {
             </div>
             <div>
               <h1>{activeChat?.title ?? "Aythiya AI Chat"}</h1>
-              <p>
-                <ShieldCheck size={13} /> Private, encrypted, and confidential
-              </p>
             </div>
           </div>
 
@@ -428,9 +519,38 @@ export default function ChatPage() {
         }
 
         .chat-logo img {
-          height: 46px;
+          height: 52px;
           width: auto;
           object-fit: contain;
+        }
+
+        .sidebar-user {
+          margin: -2px 0 18px;
+          padding: 12px 14px;
+          border-radius: 16px;
+          background: rgba(239, 246, 255, 0.72);
+          border: 1px solid rgba(191, 219, 254, 0.74);
+        }
+
+        .sidebar-user span {
+          display: block;
+          color: #0f172a;
+          font-size: 14px;
+          font-weight: 900;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .sidebar-user small {
+          display: block;
+          margin-top: 3px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 600;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .sidebar-close {
@@ -459,29 +579,8 @@ export default function ChatPage() {
           box-shadow: 0 18px 36px rgba(29, 78, 216, 0.32);
         }
 
-        .chat-nav {
-          display: grid;
-          gap: 8px;
-          margin: 18px 0 24px;
-        }
-
-        .nav-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px 14px;
-          border-radius: 14px;
-          color: #64748b;
-          font-weight: 700;
-          font-size: 14px;
-        }
-
-        .nav-item.active {
-          color: #1d4ed8;
-          background: rgba(219, 234, 254, 0.72);
-        }
-
         .recent-wrap {
+          margin-top: 24px;
           min-height: 0;
           flex: 1;
           display: flex;
@@ -581,43 +680,6 @@ export default function ChatPage() {
         .mobile-menu:hover {
           background: rgba(219, 234, 254, 0.8);
           color: #1d4ed8;
-        }
-
-        .profile-card {
-          margin-top: 16px;
-          display: flex;
-          align-items: center;
-          gap: 11px;
-          padding: 12px;
-          border-radius: 18px;
-          background: rgba(248, 250, 252, .9);
-          border: 1px solid rgba(226, 232, 240, .9);
-        }
-
-        .avatar {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          display: grid;
-          place-items: center;
-          color: #fff;
-          font-weight: 900;
-          background: linear-gradient(135deg, #1d4ed8, #60a5fa);
-        }
-
-        .profile-card div:nth-child(2) {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .profile-card strong {
-          display: block;
-          font-size: 13px;
-        }
-
-        .profile-card span {
-          color: #64748b;
-          font-size: 11px;
         }
 
         .chat-main {

@@ -5,7 +5,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <nav style={{
+    <nav className="reveal-up" style={{
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
       // background: "rgba(255,255,255,0.92)", backdropFilter: "blur(16px)",
       borderBottom: "1px solid rgba(26,92,170,0.1)",
@@ -33,7 +33,7 @@ export default function Navbar() {
 
         {/* CTA */}
         <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-          <a href="/chat" style={{
+          <a href="/login" className="hover-lift shine-on-hover" style={{
             background:"linear-gradient(135deg,#1a5caa,#2e78d4)", color:"#fff",
             padding:"10px 22px", borderRadius:50, fontSize:14, fontWeight:600,
             textDecoration:"none", transition:"transform 0.2s, box-shadow 0.2s",

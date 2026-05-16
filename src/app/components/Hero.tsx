@@ -56,9 +56,9 @@ export default function Hero() {
   };
 
   return (
-    <section id="home" style={{ minHeight: "100vh", position: "relative", display: "flex", alignItems: "center", overflow: "hidden", paddingTop: 70 }}>
+    <section id="home" className="premium-section" style={{ minHeight: "100vh", position: "relative", display: "flex", alignItems: "center", overflow: "hidden", paddingTop: 70 }}>
       {/* BG Image */}
-      <div style={{
+      <div className="bg-kenburns" style={{
         position: "absolute", inset: 0, zIndex: 0,
         backgroundImage: "url('/hero_bg.png')", backgroundSize: "cover", backgroundPosition: "center",
       }} />
@@ -67,7 +67,7 @@ export default function Hero() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 100, alignItems: "center" }} className="hero-grid">
 
           {/* ── Left ── */}
-          <div>
+          <div className="reveal-left">
             {/* Sinhala headline */}
             <h1 style={{ marginBottom: 4 }}>
               <span style={{
@@ -91,7 +91,7 @@ export default function Hero() {
 
             {/* Buttons */}
             <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", marginBottom: 36 }}>
-              <a href="/chat" style={{
+              <a href="/chat" className="hover-lift shine-on-hover pulse-glow" style={{
                 background: "#1a5caa", color: "#fff",
                 padding: "13px 30px", borderRadius: 50, fontWeight: 700, fontSize: 15,
                 textDecoration: "none", boxShadow: "0 6px 20px rgba(26,92,170,0.35)",
@@ -101,7 +101,7 @@ export default function Hero() {
                 onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(26,92,170,0.35)"; }}
               >Try now</a>
 
-              <a href="#features" style={{
+              <a href="#features" className="hover-lift" style={{
                 display: "flex", alignItems: "center", gap: 8,
                 color: "#1a5caa", fontWeight: 600, fontSize: 15, textDecoration: "none",
                 transition: "opacity 0.2s",
@@ -118,7 +118,7 @@ export default function Hero() {
             </div>
 
             {/* Feature pills */}
-            <div style={{
+            <div className="reveal-up" style={{
               display: "flex", gap: 10, flexWrap: "wrap",
               background: "rgba(255,255,255,0.65)", backdropFilter: "blur(10px)",
               borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,0.8)",
@@ -144,8 +144,8 @@ export default function Hero() {
           </div>
 
           {/* ── Right — Chat Widget ── */}
-          <div style={{ display: "flex", justifyContent: "flex-end", flex: "0 0 45%", marginLeft: "auto", alignSelf: "flex-start", marginTop: 20 }}>
-            <div style={{
+          <div className="reveal-right float-soft" style={{ display: "flex", justifyContent: "flex-end", flex: "0 0 45%", marginLeft: "auto", alignSelf: "flex-start", marginTop: 20 }}>
+            <div className="premium-card" style={{
               background: "rgba(255, 255, 255, 0.4)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
               borderRadius: 24,
               boxShadow: "0 24px 64px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.5) inset", overflow: "hidden",

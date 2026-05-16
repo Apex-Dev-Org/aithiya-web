@@ -3,6 +3,7 @@ export default function CTA() {
   return (
     <section
       id="contact"
+      className="premium-section"
       style={{
         padding: "86px 0 98px",
         background: "#fff",
@@ -11,6 +12,7 @@ export default function CTA() {
     >
       <div className="container">
         <img
+          className="float-soft reveal-up"
           src="/aythiya_logo.png"
           alt="Aythiya"
           style={{
@@ -24,6 +26,7 @@ export default function CTA() {
         />
 
         <h2
+          className="reveal-up"
           style={{
             color: "#1f2937",
             fontSize: "clamp(30px, 4vw, 44px)",
@@ -36,6 +39,7 @@ export default function CTA() {
         </h2>
 
         <p
+          className="reveal-up"
           style={{
             color: "#0f172a",
             fontSize: "clamp(16px, 2vw, 20px)",
@@ -51,6 +55,7 @@ export default function CTA() {
 
         <a
           href="#how-it-works"
+          className="hover-lift shine-on-hover pulse-glow"
           style={{
             display: "inline-flex",
             alignItems: "center",

@@ -14,12 +14,12 @@ export default function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" style={{ padding:"90px 0", background:"#fff" }}>
+    <section id="faq" className="premium-section" style={{ padding:"90px 0", background:"#fff" }}>
       <div className="container">
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:60, alignItems:"start" }} className="faq-grid">
 
           {/* Left */}
-          <div>
+          <div className="reveal-left">
             <span style={{
               background:"linear-gradient(135deg,#e8f0fe,#dbeafe)", color:"#1a5caa",
               padding:"6px 18px", borderRadius:50, fontSize:13, fontWeight:600
@@ -31,15 +31,15 @@ export default function FAQ() {
               Got questions about Aythiya? We&apos;ve answered the most common ones below.
             </p>
 
-            <img src="/faq_justice.png" alt="Sri Lanka Legal" style={{
+            <img className="float-slow" src="/faq_justice.png" alt="Sri Lanka Legal" style={{
               width:"100%", height:"auto", objectFit:"contain", display:"block"
             }}/>
           </div>
 
           {/* Right — Accordion */}
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div className="reveal-stagger" style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {faqs.map((f,i) => (
-              <div key={i} style={{
+              <div key={i} className="premium-card" style={{
                 border:`1px solid ${open===i?"#1a5caa":"#e2ecf8"}`,
                 borderRadius:16, overflow:"hidden",
                 transition:"border-color 0.25s",

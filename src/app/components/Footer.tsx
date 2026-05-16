@@ -1,9 +1,9 @@
 "use client";
 export default function Footer() {
   return (
-    <footer style={{ background:"#0a1628", color:"rgba(255,255,255,0.75)", paddingTop:60 }}>
+    <footer className="premium-section" style={{ background:"#0a1628", color:"rgba(255,255,255,0.75)", paddingTop:60 }}>
       <div className="container">
-        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:40, paddingBottom:48 }} className="footer-grid">
+        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:40, paddingBottom:48 }} className="footer-grid reveal-stagger">
 
           {/* Brand */}
           <div>
@@ -16,7 +16,7 @@ export default function Footer() {
             </p>
             <div style={{ display:"flex", gap:12, marginTop:20 }}>
               {["𝕏","in","📘","📸"].map((icon,i) => (
-                <a key={i} href="#" style={{
+                <a key={i} href="#" className="hover-lift" style={{
                   width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.08)",
                   display:"flex", alignItems:"center", justifyContent:"center",
                   fontSize:15, color:"#fff", textDecoration:"none", transition:"background 0.2s"
