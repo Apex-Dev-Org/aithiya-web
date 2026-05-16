@@ -9,7 +9,7 @@ export default function Footer() {
           <div>
             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
               <img src="/aythiya_logo.png" alt="Aythiya" style={{ width:36, height:36 }}/>
-              <span style={{ fontFamily:"'Noto Sans Sinhala',sans-serif", fontSize:20, fontWeight:700, color:"#fff" }}>ආතිය</span>
+              <span style={{ fontFamily:"'Noto Sans Sinhala',sans-serif", fontSize:20, fontWeight:700, color:"#fff" }}>අයිතිය</span>
             </div>
             <p style={{ fontSize:14, lineHeight:1.8, maxWidth:260 }}>
               Sri Lanka&apos;s first AI-powered legal assistant. Making justice accessible to every citizen.

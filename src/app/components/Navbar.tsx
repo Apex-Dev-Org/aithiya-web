@@ -15,12 +15,12 @@ export default function Navbar() {
         {/* Logo */}
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <img src="/aythiya_logo.png" alt="Aythiya Logo" style={{ width:38, height:38, objectFit:"contain" }} />
-          <span style={{ fontFamily:"'Noto Sans Sinhala', sans-serif", fontSize:22, fontWeight:700, color:"#1a5caa" }}>ආතිය</span>
+          <span style={{ fontFamily:"'Noto Sans Sinhala', sans-serif", fontSize:22, fontWeight:700, color:"#1a5caa" }}>අයිතිය</span>
         </div>
 
         {/* Desktop Nav */}
         <div style={{ display:"flex", gap:32, alignItems:"center" }} className="desktop-nav">
-          {["Home","Features","About","FAQ","Contact"].map(item => (
+          {["Home","Features","About","Pricing","FAQ","Contact"].map(item => (
             <a key={item} href={`#${item.toLowerCase()}`} style={{
               color:"#334155", textDecoration:"none", fontSize:14, fontWeight:500,
               transition:"color 0.2s"
@@ -56,7 +56,7 @@ export default function Navbar() {
       {/* Mobile Menu */}
       {menuOpen && (
         <div style={{ background:"#fff", padding:"16px 24px", borderTop:"1px solid var(--border)" }}>
-          {["Home","Features","About","FAQ","Contact"].map(item => (
+          {["Home","Features","About","Pricing","FAQ","Contact"].map(item => (
             <a key={item} href={`#${item.toLowerCase()}`} onClick={() => setMenuOpen(false)} style={{
               display:"block", padding:"12px 0", color:"#334155",
               textDecoration:"none", fontSize:15, fontWeight:500,
