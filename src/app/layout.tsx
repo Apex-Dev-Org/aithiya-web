@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import RootProviders from "./RootProviders";
 
 export const metadata: Metadata = {
   title: "Aythiya | AI Legal Assistant for Sri Lanka",
@@ -9,8 +10,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="si">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <RootProviders>{children}</RootProviders>
+      </body>
     </html>
   );
 }

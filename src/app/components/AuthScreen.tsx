@@ -11,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import { authService } from "../../services/authService";
+import { useTranslation } from "../../i18n/useTranslation";
 
 type AuthScreenProps = {
   initialMode?: "login" | "signup";
@@ -23,6 +24,7 @@ export default function AuthScreen({
   gateMessage,
   onAuthenticated,
 }: AuthScreenProps) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<"login" | "signup" | "forgot">(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -51,16 +53,16 @@ export default function AuthScreen({
 
     if (mode === "forgot") {
       if (!form.email.trim()) {
-        setError("Please enter your email address.");
+        setError(t("validatorEnterEmail"));
         return;
       }
 
       setLoading(true);
       try {
         await authService.requestPasswordReset({ email: form.email });
-        setSuccess("Reset link sent. Please check your email inbox.");
+        setSuccess(t("authResetSent"));
       } catch {
-        setError("Unable to send the reset email. Please try again.");
+        setError(t("authResetFailed"));
       } finally {
         setLoading(false);
       }
@@ -68,12 +70,12 @@ export default function AuthScreen({
     }
 
     if (!form.email.trim() || !form.password.trim()) {
-      setError("Please enter your email and password.");
+      setError(t("authMissingFields"));
       return;
     }
 
     if (mode === "signup" && form.password !== form.confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("validatorPasswordsDontMatch"));
       return;
     }
 
@@ -98,7 +100,7 @@ export default function AuthScreen({
         window.location.href = "/chat";
       }
     } catch {
-      setError("Unable to authenticate. Please try again.");
+      setError(t("authError"));
     } finally {
       setLoading(false);
     }
@@ -109,7 +111,7 @@ export default function AuthScreen({
       <section className="auth-shell">
         <div className="auth-visual">
           <Link href="/" className="auth-home-logo">
-            <img src="/aythiya_logo.png" alt="Aythiya" />
+            <img src="/aythiya_logo.png" alt={t("loginBrandTitle")} />
           </Link>
           <img
             className="auth-hero-image"
@@ -120,7 +122,7 @@ export default function AuthScreen({
 
         <form className="auth-card" onSubmit={submit}>
           <div className="auth-logo">
-            <img src="/aythiya_logo.png" alt="Aythiya" />
+            <img src="/aythiya_logo.png" alt={t("loginBrandTitle")} />
           </div>
 
           {gateMessage && <div className="gate-message">{gateMessage}</div>}
@@ -135,7 +137,7 @@ export default function AuthScreen({
                 setSuccess("");
               }}
             >
-              Sign in
+              {t("signInButton")}
             </button>
             <button
               type="button"
@@ -146,42 +148,42 @@ export default function AuthScreen({
                 setSuccess("");
               }}
             >
-              Create account
+              {t("createAccountButton")}
             </button>
           </div>
 
           <div className="auth-heading">
             <h2>
               {mode === "login"
-                ? "Welcome back"
+                ? t("authWelcomeBack")
                 : mode === "forgot"
-                  ? "Reset password"
-                  : "Create Account"}
+                  ? t("authResetPassword")
+                  : t("signupHeading")}
             </h2>
             <p>
               {mode === "login"
-                ? "Ask any legal question with your secure Aythiya account."
+                ? t("authLoginSubtitle")
                 : mode === "forgot"
-                  ? "Enter your email and we’ll send a secure password reset link."
-                : "Create your secure Aythiya account to start chatting."}
+                  ? t("authForgotSubtitle")
+                  : t("authSignupSubtitle")}
             </p>
           </div>
 
           {mode === "signup" && (
             <AuthField
               icon={<User size={17} />}
-              label="Name"
+              label={t("fieldLabelFullName")}
               value={form.name}
-              placeholder="Your full name"
+              placeholder={t("hintFullName")}
               onChange={(value) => setForm((prev) => ({ ...prev, name: value }))}
             />
           )}
 
           <AuthField
             icon={<Mail size={17} />}
-            label="Email address"
+            label={t("fieldLabelEmailAddress")}
             value={form.email}
-            placeholder="name@example.com"
+            placeholder={t("hintEmailExample")}
             type="email"
             onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
           />
@@ -189,15 +191,15 @@ export default function AuthScreen({
           {mode !== "forgot" && (
             <AuthField
               icon={<Lock size={17} />}
-              label="Password"
+              label={t("fieldLabelPassword")}
               value={form.password}
-              placeholder="••••••••"
+              placeholder={t("hintPasswordMask")}
               type={showPassword ? "text" : "password"}
               rightIcon={
                 <button
                   type="button"
                   onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? t("authHidePassword") : t("authShowPassword")}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -208,16 +210,16 @@ export default function AuthScreen({
 
           {mode === "signup" && (
             <>
-              <div className="password-meter" aria-label="Password strength">
+              <div className="password-meter" aria-label={t("authPasswordStrength")}>
                 {[0, 1, 2, 3].map((item) => (
                   <span key={item} className={item < passwordScore ? "on" : ""} />
                 ))}
               </div>
               <AuthField
                 icon={<Lock size={17} />}
-                label="Confirm password"
+                label={t("fieldLabelConfirmPassword")}
                 value={form.confirmPassword}
-                placeholder="••••••••"
+                placeholder={t("hintConfirmPasswordMask")}
                 type="password"
                 onChange={(value) =>
                   setForm((prev) => ({ ...prev, confirmPassword: value }))
@@ -229,7 +231,7 @@ export default function AuthScreen({
           {mode === "login" && (
             <div className="forgot-row">
               <label>
-                <input type="checkbox" /> Remember me
+                <input type="checkbox" /> {t("rememberMe")}
               </label>
               <button
                 type="button"
@@ -239,7 +241,7 @@ export default function AuthScreen({
                   setSuccess("");
                 }}
               >
-                Forgot password?
+                {t("loginForgotPassword")}
               </button>
             </div>
           )}
@@ -250,37 +252,37 @@ export default function AuthScreen({
           <button className="auth-submit" type="submit" disabled={loading}>
             {loading
               ? mode === "forgot"
-                ? "Sending reset link..."
-                : "Authenticating..."
+                ? t("authSendingResetLink")
+                : t("authAuthenticating")
               : mode === "forgot"
-                ? "Send reset link"
-              : mode === "login"
-                ? "Sign in"
-                : "Create Account"}
+                ? t("authSendResetLink")
+                : mode === "login"
+                  ? t("signInButton")
+                  : t("createAccountButton")}
             <ArrowRight size={18} />
           </button>
 
           <div className="auth-divider">
             <span />
-            or
+            {t("orDividerUpper")}
             <span />
           </div>
 
           <button
             className="google-btn"
             type="button"
-            onClick={() => setError("Google sign-in will be connected later.")}
+            onClick={() => setError(t("googleNotConnected"))}
           >
             <span>G</span>
-            {mode === "login" ? "Sign in with Google" : "Sign up with Google"}
+            {t("continueWithGoogle")}
           </button>
 
           <p className="auth-bottom">
             {mode === "login"
-              ? "Don’t have an account?"
+              ? t("loginNoAccount")
               : mode === "forgot"
-                ? "Remember your password?"
-                : "Already have an account?"}{" "}
+                ? t("authRememberPassword")
+                : t("authAlreadyHaveAccount")}{" "}
             <button
               type="button"
               onClick={() => {
@@ -289,14 +291,14 @@ export default function AuthScreen({
                 setSuccess("");
               }}
             >
-              {mode === "login" ? "Create Account" : "Sign in"}
+              {mode === "login" ? t("createAccountButton") : t("signInButton")}
             </button>
           </p>
 
           <div className="auth-trust">
-            <span>Private</span>
-            <span>Confidential</span>
-            <span>AI-powered guidance</span>
+            <span>{t("authPrivate")}</span>
+            <span>{t("authConfidential")}</span>
+            <span>{t("authAiPowered")}</span>
           </div>
         </form>
       </section>

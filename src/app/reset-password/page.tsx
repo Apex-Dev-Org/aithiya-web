@@ -4,8 +4,10 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 import { authService } from "../../services/authService";
+import { useTranslation } from "../../i18n/useTranslation";
 
 export default function ResetPasswordPage() {
+  const { t } = useTranslation();
   const [accessToken, setAccessToken] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -17,19 +19,28 @@ export default function ResetPasswordPage() {
   });
 
   useEffect(() => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const queryParams = new URLSearchParams(window.location.search);
-    const token =
-      hashParams.get("access_token") ??
-      queryParams.get("access_token") ??
-      "";
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
 
-    setAccessToken(token);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const queryParams = new URLSearchParams(window.location.search);
+      const token =
+        hashParams.get("access_token") ??
+        queryParams.get("access_token") ??
+        "";
 
-    if (!token) {
-      setError("This reset link is invalid or expired. Please request a new link.");
-    }
-  }, []);
+      setAccessToken(token);
+
+      if (!token) {
+        setError(t("resetInvalidLink"));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -37,17 +48,17 @@ export default function ResetPasswordPage() {
     setSuccess("");
 
     if (!accessToken) {
-      setError("This reset link is invalid or expired. Please request a new link.");
+      setError(t("resetInvalidLink"));
       return;
     }
 
     if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError(t("resetMinLength"));
       return;
     }
 
     if (form.password !== form.confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("validatorPasswordsDontMatch"));
       return;
     }
 
@@ -57,10 +68,10 @@ export default function ResetPasswordPage() {
         accessToken,
         password: form.password,
       });
-      setSuccess("Password updated successfully. You can now sign in.");
+      setSuccess(t("resetUpdated"));
       window.history.replaceState(null, "", "/reset-password");
     } catch {
-      setError("Unable to update password. Please request a new reset link.");
+      setError(t("resetUnableUpdate"));
     } finally {
       setLoading(false);
     }
@@ -70,7 +81,7 @@ export default function ResetPasswordPage() {
     <main className="reset-page">
       <section className="reset-card">
         <Link href="/" className="reset-logo">
-          <img src="/aythiya_logo.png" alt="Aythiya" />
+          <img src="/aythiya_logo.png" alt={t("loginBrandTitle")} />
         </Link>
 
         <div className="reset-icon">
@@ -78,13 +89,13 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="reset-heading">
-          <h1>Create a new password</h1>
-          <p>Choose a strong password to protect your Aythiya account.</p>
+          <h1>{t("resetPageTitle")}</h1>
+          <p>{t("resetPageSubtitle")}</p>
         </div>
 
         <form onSubmit={submit}>
           <ResetField
-            label="New password"
+            label={t("resetNewPasswordLabel")}
             value={form.password}
             type={showPassword ? "text" : "password"}
             onChange={(value) => setForm((prev) => ({ ...prev, password: value }))}
@@ -92,7 +103,7 @@ export default function ResetPasswordPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? t("authHidePassword") : t("authShowPassword")}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -100,7 +111,7 @@ export default function ResetPasswordPage() {
           />
 
           <ResetField
-            label="Confirm new password"
+            label={t("resetConfirmNewPasswordLabel")}
             value={form.confirmPassword}
             type="password"
             onChange={(value) =>
@@ -112,16 +123,14 @@ export default function ResetPasswordPage() {
           {success && <p className="reset-success">{success}</p>}
 
           <button className="reset-submit" type="submit" disabled={loading || !accessToken}>
-            {loading ? "Updating password..." : "Update password"}
+            {loading ? t("resetUpdating") : t("resetUpdate")}
             <ArrowRight size={18} />
           </button>
         </form>
 
         <p className="reset-bottom">
-          Back to{" "}
-          <Link href="/login">
-            Sign in
-          </Link>
+          {t("resetBackToSignIn")}{" "}
+          <Link href="/login">{t("signInButton")}</Link>
         </p>
       </section>
 

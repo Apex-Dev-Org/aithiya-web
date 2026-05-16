@@ -1,6 +1,17 @@
 "use client";
 
-const TOKEN_KEYS = ["auth_token", "authToken", "token"];
+import { ApiHttpError, chatService } from "./chatService";
+import {
+  clearAuthStorage,
+  getStoredAccessToken,
+  getStoredUser,
+  getValidAccessToken,
+  pickStoredUser,
+  setStoredUser,
+  storeAuthSession,
+  type StoredUser,
+  type SupabaseAuthPayload,
+} from "./authSession";
 
 type AuthPayload = {
   email: string;
@@ -17,40 +28,8 @@ type UpdatePasswordPayload = {
   password: string;
 };
 
-type AuthResponse = {
-  access_token?: string;
-  token?: string;
-  jwt?: string;
-  user?: unknown;
-};
-
-type StoredUser = {
-  name?: string;
-  email?: string;
-};
-
-function storage() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage;
-}
-
-function pickToken(data: AuthResponse) {
-  return data.access_token ?? data.token ?? data.jwt;
-}
-
-function pickUser(data: AuthResponse, fallback?: AuthPayload): StoredUser {
-  const user = typeof data.user === "object" && data.user !== null
-    ? (data.user as Record<string, unknown>)
-    : {};
-  const metadata =
-    typeof user.user_metadata === "object" && user.user_metadata !== null
-      ? (user.user_metadata as Record<string, unknown>)
-      : {};
-
-  return {
-    name: String(metadata.name ?? fallback?.name ?? user.email ?? fallback?.email ?? "Aythiya User"),
-    email: String(user.email ?? fallback?.email ?? ""),
-  };
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 async function postAuth(path: string, payload: AuthPayload) {
@@ -65,7 +44,7 @@ async function postAuth(path: string, payload: AuthPayload) {
     throw new Error(data.error ?? `Auth failed: ${response.status}`);
   }
 
-  return response.json() as Promise<AuthResponse>;
+  return response.json() as Promise<SupabaseAuthPayload>;
 }
 
 async function postJson<TPayload extends Record<string, unknown>>(
@@ -88,72 +67,63 @@ async function postJson<TPayload extends Record<string, unknown>>(
 
 export const authService = {
   getToken() {
-    const localStorage = storage();
-    if (!localStorage) return undefined;
-
-    for (const key of TOKEN_KEYS) {
-      const token = localStorage.getItem(key);
-      if (token) return token;
-    }
-
-    return undefined;
+    return getStoredAccessToken();
   },
 
   setToken(token: string) {
-    const localStorage = storage();
-    if (!localStorage) return;
-    localStorage.setItem("auth_token", token);
+    storeAuthSession({ access_token: token });
   },
 
   setUser(user: StoredUser) {
-    const localStorage = storage();
-    if (!localStorage) return;
-    localStorage.setItem("auth_user", JSON.stringify(user));
+    setStoredUser(user);
   },
 
   getUser(): StoredUser | undefined {
-    const localStorage = storage();
-    if (!localStorage) return undefined;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return undefined;
-
-    try {
-      return JSON.parse(raw) as StoredUser;
-    } catch {
-      return undefined;
-    }
+    return getStoredUser();
   },
 
   clearToken() {
-    const localStorage = storage();
-    if (!localStorage) return;
-    TOKEN_KEYS.forEach((key) => localStorage.removeItem(key));
-    localStorage.removeItem("auth_user");
+    clearAuthStorage();
+  },
+
+  signOut() {
+    this.clearToken();
   },
 
   isAuthenticated() {
     return Boolean(this.getToken());
   },
 
+  async refreshProfileFromApi() {
+    try {
+      const me = await chatService.getMe();
+      mergeUserFromMe(asRecord(me));
+    } catch (e) {
+      if (e instanceof ApiHttpError && (e.status === 401 || e.status === 403)) {
+        this.signOut();
+        throw e;
+      }
+      console.warn("Could not sync /auth/me", e);
+    }
+  },
+
   async login(payload: AuthPayload) {
     const data = await postAuth("/api/auth/login", payload);
-    const token = pickToken(data);
+    const token = storeAuthSession(data, payload);
     if (!token) throw new Error("No token returned from auth provider.");
-    this.setToken(token);
-    this.setUser(pickUser(data, payload));
+    await this.refreshProfileFromApi();
     return data;
   },
 
   async register(payload: AuthPayload) {
     const data = await postAuth("/api/auth/register", payload);
-    const token = pickToken(data);
+    const token = storeAuthSession(data, payload);
     if (!token) {
       throw new Error(
         "Account created, but no session token was returned. Please confirm the email and sign in."
       );
     }
-    this.setToken(token);
-    this.setUser(pickUser(data, payload));
+    await this.refreshProfileFromApi();
     return data;
   },
 
@@ -164,4 +134,70 @@ export const authService = {
   async updatePassword(payload: UpdatePasswordPayload) {
     return postJson("/api/auth/reset-password", payload);
   },
+
+  async updateDisplayName(name: string) {
+    const token = await getValidAccessToken();
+    if (!token) throw new Error("Not signed in.");
+
+    const response = await fetch("/api/auth/update-profile", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        this.signOut();
+      }
+      throw new Error(
+        typeof data.error === "string" ? data.error : "Could not update profile."
+      );
+    }
+
+    const userPayload =
+      typeof data === "object" && data !== null && "user" in data
+        ? (data as { user?: unknown }).user
+        : data;
+
+    this.setUser(
+      pickStoredUser({ user: userPayload } as SupabaseAuthPayload, {
+        email: this.getUser()?.email ?? "",
+        password: "",
+      })
+    );
+
+    await this.refreshProfileFromApi().catch(() => {});
+  },
 };
+
+function mergeUserFromMe(me: Record<string, unknown>) {
+  const existing = authService.getUser() ?? {};
+
+  const nested =
+    typeof me.user === "object" && me.user !== null
+      ? asRecord(me.user)
+      : me;
+
+  const email = String(nested.email ?? me.email ?? existing.email ?? "");
+
+  const meta =
+    typeof nested.user_metadata === "object" && nested.user_metadata !== null
+      ? asRecord(nested.user_metadata)
+      : {};
+
+  const name = String(
+    nested.full_name ??
+      nested.name ??
+      nested.display_name ??
+      meta.full_name ??
+      meta.name ??
+      existing.name ??
+      (email || "Aythiya User")
+  );
+
+  authService.setUser({ name, email });
+}

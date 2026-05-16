@@ -16,14 +16,16 @@ import {
   Plus,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
 import { Message, ChatSession, MessageAttachment } from "../../types/chat";
-import { chatService } from "../../services/chatService";
+import { ApiHttpError, chatService } from "../../services/chatService";
 import { authService } from "../../services/authService";
+import { useTranslation } from "../../i18n/useTranslation";
 import AuthScreen from "../components/AuthScreen";
 
 type ChatSessionUi = ChatSession & {
@@ -37,33 +39,58 @@ const nowTime = () =>
 const today = () =>
   new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-const welcomeMessage = (): Message => ({
-  id: "welcome",
-  role: "ai",
-  content:
-    "Hello! I am Aythiya AI. Tell me what happened and I will help you understand possible rights, next steps, and useful documents.",
-  timestamp: nowTime(),
-});
-
 export default function ChatPage() {
+  const { t } = useTranslation();
+
+  const buildWelcome = (): Message => ({
+    id: "welcome",
+    role: "ai",
+    content: t("chatWelcome"),
+    timestamp: nowTime(),
+  });
+
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [authUser, setAuthUser] = useState<{ name?: string; email?: string }>();
   const [input, setInput] = useState("");
   const [recentChats, setRecentChats] = useState<ChatSessionUi[]>([]);
   const [activeChatId, setActiveChatId] = useState("chat-main");
   const [chatMessages, setChatMessages] = useState<Record<string, Message[]>>({
-    "chat-main": [welcomeMessage()],
+    "chat-main": [
+      {
+        id: "welcome",
+        role: "ai",
+        content: t("chatWelcome"),
+        timestamp: nowTime(),
+      },
+    ],
   });
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [threadsError, setThreadsError] = useState("");
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [threadsRetryTick, setThreadsRetryTick] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const messages = chatMessages[activeChatId] ?? [welcomeMessage()];
+  const messages = useMemo(() => {
+    const list = chatMessages[activeChatId] ?? [
+      {
+        id: "welcome",
+        role: "ai" as const,
+        content: t("chatWelcome"),
+        timestamp: nowTime(),
+      },
+    ];
+    return list.map((message) =>
+      message.id === "welcome" && message.role === "ai"
+        ? { ...message, content: t("chatWelcome") }
+        : message
+    );
+  }, [activeChatId, chatMessages, t]);
 
   const sortedChats = useMemo(
     () =>
@@ -72,97 +99,133 @@ export default function ChatPage() {
   );
 
   useEffect(() => {
-    setIsAuthenticated(authService.isAuthenticated());
-    setAuthUser(authService.getUser());
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setIsAuthenticated(authService.isAuthenticated());
+      setAuthUser(authService.getUser());
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    chatService.fetchRecentChats().then((sessions) => {
-      const hydrated = sessions.map((session, index) => ({
-        ...session,
-        pinned: index === 0,
-        preview: index === 0 ? "Salary issue and labour complaint" : "Criminal case guidance",
-      }));
+    let cancelled = false;
 
-      setRecentChats([
-        { id: "chat-main", title: "New Legal Question", date: "Today", pinned: true, preview: "Aythiya AI assistant" },
-        ...hydrated,
-      ]);
-    });
-  }, [isAuthenticated]);
+    const load = async () => {
+      setThreadsError("");
+      setThreadsLoading(true);
+      try {
+        await authService.refreshProfileFromApi();
+        if (cancelled) return;
+        setAuthUser(authService.getUser());
+
+        const sessions = await chatService.fetchRecentChats();
+        if (cancelled) return;
+
+        const hydrated = sessions.map((session) => ({
+          ...session,
+          pinned: false,
+          preview: session.title,
+        }));
+
+        setRecentChats([
+          {
+            id: "chat-main",
+            title: t("newChat"),
+            date: today(),
+            pinned: true,
+            preview: t("loginBrandTitle"),
+          },
+          ...hydrated,
+        ]);
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiHttpError && (error.status === 401 || error.status === 403)) {
+          authService.signOut();
+          setIsAuthenticated(false);
+          return;
+        }
+        setThreadsError(t("chatLoadError"));
+      } finally {
+        if (!cancelled) setThreadsLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, t, threadsRetryTick]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
 
-  const updateActiveMessages = (next: Message[] | ((prev: Message[]) => Message[])) => {
-    setChatMessages((prev) => {
-      const current = prev[activeChatId] ?? [welcomeMessage()];
-      return {
-        ...prev,
-        [activeChatId]: typeof next === "function" ? next(current) : next,
-      };
-    });
-  };
-
   const isBackendThread = (id: string) =>
     !id.startsWith("chat-") && !id.startsWith("mock-") && id !== "chat-main";
 
   const createNewChat = async () => {
-    let newSession: ChatSessionUi;
-
     try {
-      const created = await chatService.createThread("Untitled legal chat");
-      newSession = {
+      const created = await chatService.createThread(t("newChat"));
+      const newSession: ChatSessionUi = {
         ...created,
-        date: "Today",
-        preview: "Start a fresh question",
-        pinned: false,
-      };
-    } catch (error) {
-      console.warn("Could not create backend thread, using local draft", error);
-      newSession = {
-        id: `chat-${Date.now()}`,
-        title: "Untitled legal chat",
         date: today(),
-        preview: "Start a fresh question",
+        preview: t("chatComposerPlaceholder").slice(0, 54),
         pinned: false,
       };
-    }
 
-    setRecentChats((prev) => [newSession, ...prev]);
-    setChatMessages((prev) => ({ ...prev, [newSession.id]: [welcomeMessage()] }));
-    setActiveChatId(newSession.id);
-    setInput("");
-    setAttachments([]);
-    setPendingFiles([]);
-    setSidebarOpen(false);
+      setRecentChats((prev) => [newSession, ...prev]);
+      setChatMessages((prev) => ({ ...prev, [newSession.id]: [buildWelcome()] }));
+      setActiveChatId(newSession.id);
+      setInput("");
+      setAttachments([]);
+      setPendingFiles([]);
+      setSidebarOpen(false);
+    } catch {
+      window.alert(t("chatLoadError"));
+    }
   };
 
   const openChat = async (id: string) => {
     setActiveChatId(id);
     setChatMessages((prev) => ({
       ...prev,
-      [id]: prev[id] ?? [welcomeMessage()],
+      [id]: prev[id] ?? [buildWelcome()],
     }));
     setSidebarOpen(false);
 
     if (!isBackendThread(id)) return;
 
-    const threadMessages = await chatService.fetchThreadMessages(id);
-    if (threadMessages.length) {
-      setChatMessages((prev) => ({ ...prev, [id]: threadMessages }));
+    try {
+      const threadMessages = await chatService.fetchThreadMessages(id);
+      if (threadMessages.length) {
+        setChatMessages((prev) => ({ ...prev, [id]: threadMessages }));
+      }
+    } catch {
+      window.alert(t("chatLoadError"));
     }
   };
 
   const deleteChat = async (id: string) => {
+    if (id === "chat-main") return;
+    if (
+      !window.confirm(
+        `${t("chatHistoryDeleteConfirmTitle")}\n\n${t("chatHistoryDeleteConfirmBody")}`
+      )
+    )
+      return;
+
     if (isBackendThread(id)) {
       try {
         await chatService.deleteThread(id);
-      } catch (error) {
-        console.warn("Could not delete backend thread, removing locally", error);
+      } catch {
+        window.alert(t("chatHistoryDeleteError"));
+        return;
       }
     }
 
@@ -179,7 +242,7 @@ export default function ChatPage() {
       setActiveChatId(nextId);
       setChatMessages((prev) => ({
         ...prev,
-        [nextId]: prev[nextId] ?? [welcomeMessage()],
+        [nextId]: prev[nextId] ?? [buildWelcome()],
       }));
     }
   };
@@ -212,31 +275,23 @@ export default function ChatPage() {
   const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || loading) return;
 
-    const content = input.trim() || "Please review the attached document.";
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content,
-      timestamp: nowTime(),
-      attachments,
-    };
-
-    updateActiveMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setAttachments([]);
-    setPendingFiles([]);
-    setLoading(true);
+    const content = input.trim() || t("chatAttachmentOnly");
+    const snapshotAttachments = [...attachments];
+    const snapshotPendingFiles = [...pendingFiles];
 
     let threadId = activeChatId;
+    let createdFromMain = false;
+
     if (!isBackendThread(threadId)) {
       try {
         const created = await chatService.createThread(content.slice(0, 48));
         threadId = created.id;
+        createdFromMain = true;
 
         setRecentChats((prev) => [
           {
             ...created,
-            date: "Today",
+            date: today(),
             preview: content.slice(0, 54),
             pinned: false,
           },
@@ -244,54 +299,77 @@ export default function ChatPage() {
         ]);
 
         setChatMessages((prev) => {
-          const current = prev[activeChatId] ?? [welcomeMessage()];
+          const current = prev[activeChatId] ?? [buildWelcome()];
           const next = { ...prev, [created.id]: current };
           delete next[activeChatId];
           return next;
         });
 
         setActiveChatId(created.id);
-      } catch (error) {
-        console.warn("Could not create backend thread before sending", error);
+      } catch {
+        window.alert(t("chatSendError"));
+        return;
       }
     }
+
+    const preSendTitle = recentChats.find((c) => c.id === threadId)?.title;
+    const defaultTitle = t("newChat");
+    const blandTitles = new Set<string>([defaultTitle, "Untitled legal chat"]);
+
+    const userMessage: Message = {
+      id: `msg-${Date.now()}`,
+      role: "user",
+      content,
+      timestamp: nowTime(),
+      attachments: snapshotAttachments,
+    };
+
+    setChatMessages((prev) => {
+      const cur = prev[threadId] ?? [buildWelcome()];
+      return { ...prev, [threadId]: [...cur, userMessage] };
+    });
+
+    setInput("");
+    setAttachments([]);
+    setPendingFiles([]);
+    setLoading(true);
 
     setRecentChats((prev) =>
       prev.map((chat) =>
         chat.id === threadId || chat.id === activeChatId
           ? {
               ...chat,
-              title: chat.title === "Untitled legal chat" ? content.slice(0, 34) : chat.title,
+              title: chat.title === defaultTitle ? content.slice(0, 34) : chat.title,
               preview: content.slice(0, 54),
-              date: "Today",
+              date: today(),
             }
           : chat
       )
     );
 
     try {
-      if (isBackendThread(threadId)) {
-        const current = recentChats.find((chat) => chat.id === threadId);
-        if (current?.title === "Untitled legal chat") {
-          await chatService.updateThreadTitle(threadId, content.slice(0, 48));
-        }
+      if (isBackendThread(threadId) && !createdFromMain && blandTitles.has(preSendTitle ?? "")) {
+        await chatService.updateThreadTitle(threadId, content.slice(0, 48));
       }
 
-      const aiMessage = await chatService.sendMessage(userMessage.content, pendingFiles, isBackendThread(threadId) ? threadId : undefined);
+      const aiMessage = await chatService.sendMessage(
+        content,
+        snapshotPendingFiles,
+        isBackendThread(threadId) ? threadId : undefined
+      );
       setChatMessages((prev) => ({
         ...prev,
-        [threadId]: [...(prev[threadId] ?? prev[activeChatId] ?? [welcomeMessage()]), aiMessage],
+        [threadId]: [...(prev[threadId] ?? prev[activeChatId] ?? [buildWelcome()]), aiMessage],
       }));
-    } catch (error) {
-      console.error("Failed to send message", error);
+    } catch {
       setChatMessages((prev) => ({
         ...prev,
         [threadId]: [
-          ...(prev[threadId] ?? prev[activeChatId] ?? [welcomeMessage()]),
+          ...(prev[threadId] ?? prev[activeChatId] ?? [buildWelcome()]),
           {
             id: `err-${Date.now()}`,
             role: "ai",
-            content: "I could not process that right now. Please try again.",
+            content: t("chatErrorReply"),
             timestamp: nowTime(),
           },
         ],
@@ -306,7 +384,7 @@ export default function ChatPage() {
   if (isAuthenticated === null) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "#1d4ed8", fontWeight: 800 }}>
-        Loading secure workspace...
+        {t("chatLoadingWorkspace")}
       </div>
     );
   }
@@ -315,8 +393,11 @@ export default function ChatPage() {
     return (
       <AuthScreen
         initialMode="login"
-        gateMessage="Login to use Aythiya Chat"
-        onAuthenticated={() => setIsAuthenticated(true)}
+        gateMessage={t("chatGateMessage")}
+        onAuthenticated={() => {
+          setIsAuthenticated(true);
+          setAuthUser(authService.getUser());
+        }}
       />
     );
   }
@@ -326,27 +407,47 @@ export default function ChatPage() {
       <aside className={`chat-sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div className="sidebar-top">
           <Link href="/" className="chat-logo">
-            <img src="/aythiya_logo.png" alt="Aythiya Logo" />
+            <img src="/aythiya_logo.png" alt={t("loginBrandTitle")} />
           </Link>
-          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
-            <X size={18} />
-          </button>
+          <div className="sidebar-top-actions">
+            <Link href="/settings" className="sidebar-settings" aria-label={t("settingsTitle")}>
+              <Settings size={20} />
+            </Link>
+            <button
+              className="sidebar-close"
+              onClick={() => setSidebarOpen(false)}
+              aria-label={t("chatCloseSidebar")}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="sidebar-user">
-          <span>{authUser?.name ?? authUser?.email ?? "Aythiya User"}</span>
+          <span>{authUser?.name ?? authUser?.email ?? t("loginBrandTitle")}</span>
           {authUser?.email && <small>{authUser.email}</small>}
         </div>
 
         <button className="new-chat-btn" onClick={createNewChat}>
           <Plus size={18} />
-          Create New Chat
+          {t("createNewChat")}
         </button>
+
+        {threadsError && (
+          <div className="threads-error-bar" role="alert">
+            <span>{threadsError}</span>
+            <button type="button" onClick={() => setThreadsRetryTick((n) => n + 1)}>
+              {t("chatRetry")}
+            </button>
+          </div>
+        )}
+
+        {threadsLoading && <p className="threads-loading-hint">{t("chatLoadingThreads")}</p>}
 
         <div className="recent-wrap">
           <div className="recent-header">
-            <span>Recent Chats</span>
-            <Search size={15} />
+            <span>{t("drawerRecentChats")}</span>
+            <Search size={15} aria-hidden />
           </div>
 
           <div className="recent-list">
@@ -361,15 +462,18 @@ export default function ChatPage() {
                     {chat.pinned && <Pin size={12} />}
                     <span>{chat.title}</span>
                   </div>
-                  <p>{chat.preview ?? "Continue this legal conversation"}</p>
+                  <p>{chat.preview ?? t("chatComposerPlaceholder").slice(0, 54)}</p>
                   <small>{chat.date}</small>
                 </div>
 
                 <div className="recent-actions" onClick={(event) => event.stopPropagation()}>
-                  <button onClick={() => togglePin(chat.id)} aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}>
+                  <button
+                    onClick={() => togglePin(chat.id)}
+                    aria-label={chat.pinned ? t("chatHistoryUnpin") : t("chatHistoryPin")}
+                  >
                     {chat.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                   </button>
-                  <button onClick={() => deleteChat(chat.id)} aria-label="Delete chat">
+                  <button onClick={() => deleteChat(chat.id)} aria-label={t("chatHistoryDelete")}>
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -385,7 +489,7 @@ export default function ChatPage() {
         <div className="chat-overlay" />
 
         <header className="chat-topbar">
-          <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">
+          <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("chatOpenSidebar")}>
             <Menu size={20} />
           </button>
 
@@ -394,13 +498,13 @@ export default function ChatPage() {
               <Bot size={20} />
             </div>
             <div>
-              <h1>{activeChat?.title ?? "Aythiya AI Chat"}</h1>
+              <h1>{activeChat?.title ?? t("chatTitleDefault")}</h1>
             </div>
           </div>
 
           <Link href="/" className="home-link">
             <Home size={16} />
-            Home
+            {t("chatHomeLink")}
           </Link>
         </header>
 
@@ -434,7 +538,7 @@ export default function ChatPage() {
                 <div key={file.name} className="attachment-chip">
                   <FileText size={14} />
                   <span>{file.name}</span>
-                  <button onClick={() => removeAttachment(file.name)} aria-label="Remove attachment">
+                  <button onClick={() => removeAttachment(file.name)} aria-label={t("chatRemoveAttachment")}>
                     <X size={13} />
                   </button>
                 </div>
@@ -451,7 +555,7 @@ export default function ChatPage() {
               onChange={(event) => handleFiles(event.target.files)}
             />
 
-            <button className="tool-btn" onClick={() => fileInputRef.current?.click()} aria-label="Attach file">
+            <button className="tool-btn" onClick={() => fileInputRef.current?.click()} aria-label={t("chatAttachFile")}>
               <Paperclip size={19} />
             </button>
 
@@ -465,13 +569,13 @@ export default function ChatPage() {
                 }
               }}
               rows={1}
-              placeholder="Describe what happened, or attach a document..."
+              placeholder={t("chatComposerPlaceholder")}
             />
 
             <button
               className={`tool-btn mic-btn ${listening ? "listening" : ""}`}
               onClick={() => setListening((prev) => !prev)}
-              aria-label="Toggle microphone"
+              aria-label={t("chatToggleMic")}
             >
               <Mic size={19} />
             </button>
@@ -480,11 +584,7 @@ export default function ChatPage() {
               {loading ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
             </button>
           </div>
-          <p className="legal-disclaimer">
-            This tool provides legal information for educational purposes and
-            does not constitute official legal advice. Always consult a
-            qualified Sri Lankan attorney.
-          </p>
+          <p className="legal-disclaimer">{t("chatLegalDisclaimer")}</p>
         </section>
       </main>
 
@@ -516,6 +616,62 @@ export default function ChatPage() {
           align-items: center;
           justify-content: space-between;
           margin-bottom: 18px;
+          gap: 10px;
+        }
+
+        .sidebar-top-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .sidebar-settings {
+          display: grid;
+          place-items: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          border: 1px solid rgba(191, 219, 254, 0.74);
+          background: rgba(239, 246, 255, 0.72);
+          color: #1d4ed8;
+        }
+
+        .sidebar-settings:hover {
+          background: rgba(219, 234, 254, 0.95);
+        }
+
+        .threads-error-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          border-radius: 12px;
+          background: rgba(254, 226, 226, 0.85);
+          border: 1px solid rgba(248, 113, 113, 0.45);
+          font-size: 13px;
+          font-weight: 700;
+          color: #991b1b;
+        }
+
+        .threads-error-bar button {
+          flex-shrink: 0;
+          border: none;
+          border-radius: 10px;
+          padding: 6px 12px;
+          font-weight: 800;
+          font-size: 12px;
+          cursor: pointer;
+          background: #1d4ed8;
+          color: #fff;
+        }
+
+        .threads-loading-hint {
+          margin: 0 0 12px;
+          font-size: 12px;
+          font-weight: 700;
+          color: #64748b;
         }
 
         .chat-logo img {
@@ -1153,23 +1309,6 @@ export default function ChatPage() {
   );
 }
 
-function NavItem({
-  icon,
-  label,
-  active,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <div className={`nav-item ${active ? "active" : ""}`}>
-      {icon}
-      {label}
-    </div>
-  );
-}
-
 function MessageBubble({ msg, index }: { msg: Message; index: number }) {
   const isUser = msg.role === "user";
 
@@ -1213,20 +1352,21 @@ function MessageBubble({ msg, index }: { msg: Message; index: number }) {
 }
 
 function GuidanceSummary({ msg }: { msg: Message }) {
+  const { t } = useTranslation();
   if (!msg.guidance) return null;
 
   return (
     <div className="guidance-card glass-card">
       <div className="guidance-title">
         <Sparkles size={18} />
-        Your Guidance Summary
+        {t("chatGuidanceTitle")}
       </div>
 
       <div className="guidance-grid">
         <div className="guidance-box">
           <h3>
             <ShieldCheck size={15} color="#1d4ed8" />
-            Possible rights
+            {t("chatGuidanceRights")}
           </h3>
           <ul>
             {msg.guidance.rights.map((right, index) => (
@@ -1241,7 +1381,7 @@ function GuidanceSummary({ msg }: { msg: Message }) {
         <div className="guidance-box">
           <h3>
             <Sparkles size={15} color="#1d4ed8" />
-            Recommended steps
+            {t("chatGuidanceSteps")}
           </h3>
           <ul>
             {msg.guidance.steps.map((step, index) => (
@@ -1256,7 +1396,7 @@ function GuidanceSummary({ msg }: { msg: Message }) {
         <div className="guidance-box">
           <h3>
             <Paperclip size={15} color="#1d4ed8" />
-            Useful documents
+            {t("chatGuidanceDocs")}
           </h3>
           <ul>
             {msg.guidance.suggestedDocs.map((doc) => (

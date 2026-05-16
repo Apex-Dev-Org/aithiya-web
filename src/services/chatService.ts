@@ -1,49 +1,68 @@
 import { ChatSession, Message, MessageAttachment } from "../types/chat";
+import { getValidAccessToken } from "./authSession";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
-
-const mockRecentChats: ChatSession[] = [
-  { id: "mock-salary-delay", title: "Salary Delay", date: "May 15, 2024" },
-  { id: "mock-murder-case", title: "Murder Case", date: "May 8, 2024" },
-];
+const DEFAULT_API_BASE_URL = "/api/backend";
+const API_BASE_URL = envOrDefault(process.env.NEXT_PUBLIC_API_BASE_URL, DEFAULT_API_BASE_URL);
+const STATIC_AUTH_TOKEN = trimmedEnv(process.env.NEXT_PUBLIC_AUTH_TOKEN);
 
 type ApiRecord = Record<string, unknown>;
+
+export class ApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
+  }
+}
 
 const nowTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function getAuthToken() {
-  if (typeof window === "undefined") return process.env.NEXT_PUBLIC_AUTH_TOKEN;
+  if (typeof window === "undefined") return STATIC_AUTH_TOKEN;
 
-  return (
-    window.localStorage.getItem("auth_token") ??
-    window.localStorage.getItem("authToken") ??
-    window.localStorage.getItem("token") ??
-    process.env.NEXT_PUBLIC_AUTH_TOKEN
-  );
+  return getValidAccessToken();
 }
 
-function authHeaders(): Record<string, string> {
-  const token = getAuthToken();
+async function authHeaders(path: string): Promise<Record<string, string>> {
+  const token = (await getAuthToken()) ?? STATIC_AUTH_TOKEN;
+  if (!token && path !== "/health") {
+    throw new ApiHttpError("Authentication required.", 401);
+  }
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  Object.entries(authHeaders()).forEach(([key, value]) => headers.set(key, value));
+  Object.entries(await authHeaders(path)).forEach(([key, value]) => headers.set(key, value));
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(joinUrl(API_BASE_URL, path), {
     ...init,
     headers,
   });
 
   if (!response.ok) {
-    throw new Error(`API ${response.status}: ${response.statusText}`);
+    throw new ApiHttpError(`API ${response.status}: ${response.statusText}`, response.status);
   }
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+function envOrDefault(value: string | undefined, fallback: string) {
+  const trimmed = trimmedEnv(value);
+  return trimmed ? trimmed.replace(/\/+$/, "") : fallback;
+}
+
+function trimmedEnv(value: string | undefined) {
+  return value?.trim() ?? "";
+}
+
+function joinUrl(baseUrl: string, path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
 }
 
 function asRecord(value: unknown): ApiRecord {
@@ -104,33 +123,6 @@ function normalizeMessage(raw: unknown): Message {
   };
 }
 
-function fallbackAiMessage(text?: string): Message {
-  return {
-    id: `ai-${Date.now()}`,
-    role: "ai",
-    content:
-      text ??
-      "Based on what you described, this may involve legal rights and practical next steps. I can help you organize the issue and identify documents you may need.",
-    timestamp: nowTime(),
-    guidance: {
-      rights: [
-        { text: "You may have rights under applicable Sri Lankan laws." },
-        { text: "You may be able to request written clarification or records." },
-        { text: "You may be able to escalate the matter to the relevant authority." },
-      ],
-      steps: [
-        { text: "Write down the full timeline of what happened." },
-        { text: "Keep copies of all documents, messages, and receipts." },
-        { text: "Consult a qualified Sri Lankan attorney for formal advice." },
-      ],
-      suggestedDocs: [
-        { name: "Relevant Agreement.pdf", type: "application/pdf", url: "#" },
-        { name: "Supporting Evidence.jpg", type: "image/jpeg", url: "#" },
-      ],
-    },
-  };
-}
-
 export const chatService = {
   get baseUrl() {
     return API_BASE_URL;
@@ -155,16 +147,10 @@ export const chatService = {
   },
 
   async fetchRecentChats(limit = 50, offset = 0): Promise<ChatSession[]> {
-    try {
-      const payload = await request<unknown>(`/threads?limit=${limit}&offset=${offset}`, {
-        method: "GET",
-      });
-      const threads = getArrayPayload(payload).map(normalizeThread);
-      return threads.length ? threads : mockRecentChats;
-    } catch (error) {
-      console.warn("Falling back to mock recent chats", error);
-      return mockRecentChats;
-    }
+    const payload = await request<unknown>(`/threads?limit=${limit}&offset=${offset}`, {
+      method: "GET",
+    });
+    return getArrayPayload(payload).map(normalizeThread);
   },
 
   async updateThreadTitle(threadId: string, title: string): Promise<ChatSession> {
@@ -182,16 +168,11 @@ export const chatService = {
   },
 
   async fetchThreadMessages(threadId: string, limit = 200, offset = 0): Promise<Message[]> {
-    try {
-      const payload = await request<unknown>(
-        `/threads/${threadId}/messages?limit=${limit}&offset=${offset}`,
-        { method: "GET" }
-      );
-      return getArrayPayload(payload).map(normalizeMessage);
-    } catch (error) {
-      console.warn("Could not fetch thread messages", error);
-      return [];
-    }
+    const payload = await request<unknown>(
+      `/threads/${threadId}/messages?limit=${limit}&offset=${offset}`,
+      { method: "GET" }
+    );
+    return getArrayPayload(payload).map(normalizeMessage);
   },
 
   async uploadDocument(file: File): Promise<MessageAttachment> {
@@ -208,24 +189,19 @@ export const chatService = {
     threadId?: string,
     options?: { ragTopK?: number; onlyInEffect?: boolean }
   ): Promise<Message> {
-    try {
-      const formData = new FormData();
-      formData.append("message", text);
-      formData.append("rag_top_k", String(options?.ragTopK ?? 5));
-      formData.append("only_in_effect", String(options?.onlyInEffect ?? true));
-      if (threadId) formData.append("thread_id", threadId);
-      attachments.forEach((file) => formData.append("files", file));
+    const formData = new FormData();
+    formData.append("message", text);
+    formData.append("rag_top_k", String(options?.ragTopK ?? 5));
+    formData.append("only_in_effect", String(options?.onlyInEffect ?? true));
+    if (threadId) formData.append("thread_id", threadId);
+    attachments.forEach((file) => formData.append("files", file));
 
-      const payload = await request<unknown>("/chat", {
-        method: "POST",
-        body: formData,
-      });
+    const payload = await request<unknown>("/chat", {
+      method: "POST",
+      body: formData,
+    });
 
-      return normalizeMessage(payload);
-    } catch (error) {
-      console.warn("Falling back to local AI message", error);
-      return fallbackAiMessage();
-    }
+    return normalizeMessage(payload);
   },
 
   admin: {

@@ -1,4 +1,12 @@
 import { NextResponse } from "next/server";
+import {
+  getSupabaseAuthConfig,
+  getResetPasswordRedirectUrl,
+  missingSupabaseConfigResponse,
+  readSupabaseJson,
+  supabaseAuthHeaders,
+  supabaseErrorMessage,
+} from "../_supabase";
 
 export async function POST(request: Request) {
   const { email } = await request.json();
@@ -10,43 +18,33 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const config = getSupabaseAuthConfig();
+  if (!config) return missingSupabaseConfigResponse();
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  let redirectTo: string;
+  try {
+    redirectTo = getResetPasswordRedirectUrl(request);
+  } catch {
     return NextResponse.json(
-      { error: "Supabase auth is not configured." },
+      { error: "Password reset redirect URL is not configured correctly." },
       { status: 500 }
     );
   }
 
-  const origin =
-    request.headers.get("origin") ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000";
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+  const response = await fetch(`${config.url}/auth/v1/recover`, {
     method: "POST",
-    headers: {
-      apikey: supabaseAnonKey,
-      "Content-Type": "application/json",
-    },
+    headers: supabaseAuthHeaders(config.anonKey),
     body: JSON.stringify({
       email,
-      redirect_to: `${origin}/reset-password`,
+      redirect_to: redirectTo,
     }),
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await readSupabaseJson(response);
 
   if (!response.ok) {
     return NextResponse.json(
-      {
-        error:
-          data.error_description ??
-          data.msg ??
-          "Unable to send password reset email.",
-      },
+      { error: supabaseErrorMessage(data, "Unable to send password reset email.") },
       { status: response.status }
     );
   }

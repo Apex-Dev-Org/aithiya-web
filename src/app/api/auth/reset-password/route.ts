@@ -1,4 +1,11 @@
 import { NextResponse } from "next/server";
+import {
+  getSupabaseAuthConfig,
+  missingSupabaseConfigResponse,
+  readSupabaseJson,
+  supabaseAuthHeaders,
+  supabaseErrorMessage,
+} from "../_supabase";
 
 export async function POST(request: Request) {
   const { accessToken, password } = await request.json();
@@ -17,35 +24,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const config = getSupabaseAuthConfig();
+  if (!config) return missingSupabaseConfigResponse();
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json(
-      { error: "Supabase auth is not configured." },
-      { status: 500 }
-    );
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  const response = await fetch(`${config.url}/auth/v1/user`, {
     method: "PUT",
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
+    headers: supabaseAuthHeaders(config.anonKey, accessToken),
     body: JSON.stringify({ password }),
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await readSupabaseJson(response);
 
   if (!response.ok) {
     return NextResponse.json(
       {
-        error:
-          data.error_description ??
-          data.msg ??
-          "Unable to update password. Please request a new reset link.",
+        error: supabaseErrorMessage(
+          data,
+          "Unable to update password. Please request a new reset link."
+        ),
       },
       { status: response.status }
     );
