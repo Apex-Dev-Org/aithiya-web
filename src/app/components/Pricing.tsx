@@ -2,17 +2,31 @@
 
 import { useState } from "react";
 import {
-  Building2,
   Check,
-  CreditCard,
   Crown,
   Lock,
   ShieldCheck,
-  Smartphone,
   Sparkles,
   X,
   Zap,
 } from "lucide-react";
+import { authService } from "../../services/authService";
+import { getValidAccessToken } from "../../services/authSession";
+
+const PRODUCT_IDS = {
+  Pro: {
+    monthly: process.env.NEXT_PUBLIC_DODO_PRO_MONTH_ID ?? "",
+    yearly: process.env.NEXT_PUBLIC_DODO_PRO_YEAR_ID ?? "",
+  },
+  Ultra: {
+    monthly: process.env.NEXT_PUBLIC_DODO_ULTRA_MONTH_ID ?? "",
+    yearly: process.env.NEXT_PUBLIC_DODO_ULTRA_YEAR_ID ?? "",
+  },
+} as const;
+
+function formatLkr(amount: number) {
+  return `Rs. ${amount.toLocaleString("en-LK")}`;
+}
 
 const plans = [
   {
@@ -104,7 +118,10 @@ export default function Pricing() {
       />
 
       <div className="container" style={{ position: "relative", zIndex: 1 }}>
-        <div className="reveal-up" style={{ textAlign: "center", marginBottom: 54 }}>
+        <div
+          className="reveal-up"
+          style={{ textAlign: "center", marginBottom: 54 }}
+        >
           <span
             style={{
               display: "inline-flex",
@@ -176,9 +193,9 @@ export default function Pricing() {
             margin: "28px auto 0",
           }}
         >
-          Prices are shown in Sri Lankan Rupees and exclude any applicable taxes.
-          Aythiya provides legal information and guidance, not formal legal
-          representation.
+          Prices are shown in Sri Lankan Rupees and exclude any applicable
+          taxes. Aythiya provides legal information and guidance, not formal
+          legal representation.
         </p>
       </div>
 
@@ -263,7 +280,14 @@ function PlanCard({
       </div>
 
       <h3 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>{name}</h3>
-      <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, minHeight: 44 }}>
+      <p
+        style={{
+          color: "#64748b",
+          fontSize: 14,
+          lineHeight: 1.6,
+          minHeight: 44,
+        }}
+      >
         {description}
       </p>
 
@@ -324,7 +348,11 @@ function PlanCard({
               lineHeight: 1.45,
             }}
           >
-            <Check size={17} color="#1d4ed8" style={{ marginTop: 1, flexShrink: 0 }} />
+            <Check
+              size={17}
+              color="#1d4ed8"
+              style={{ marginTop: 1, flexShrink: 0 }}
+            />
             {feature}
           </li>
         ))}
@@ -340,34 +368,76 @@ function CheckoutModal({
   plan: PaidPlan;
   onClose: () => void;
 }) {
-  const [gateway, setGateway] = useState("payhere");
   const [message, setMessage] = useState("");
+  const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly");
+  const billingPrice = formatLkr(
+    cycle === "yearly" ? plan.amount * 12 : plan.amount,
+  );
+  const billingPeriod = cycle === "yearly" ? "per year" : plan.period;
 
-  const gateways = [
-    {
-      id: "payhere",
-      title: "PayHere / LankaQR",
-      desc: "Best for Sri Lankan cards, bank apps, and local payments.",
-      icon: Smartphone,
-    },
-    {
-      id: "card",
-      title: "Credit / Debit Card",
-      desc: "Visa, Mastercard, Amex through a secure checkout provider.",
-      icon: CreditCard,
-    },
-    {
-      id: "bank",
-      title: "Bank Transfer",
-      desc: "Manual business payments with invoice verification.",
-      icon: Building2,
-    },
-  ];
+  function resolveProductId(): string {
+    switch (plan.name) {
+      case "Pro":
+        return PRODUCT_IDS.Pro[cycle];
+      case "Ultra":
+        return PRODUCT_IDS.Ultra[cycle];
+      default:
+        return "";
+    }
+  }
 
-  const startCheckout = () => {
-    setMessage(
-      "Payment provider credentials are not configured yet. Add gateway keys and I can connect this button to a real checkout session."
-    );
+  const startCheckout = async () => {
+    setMessage("");
+    const productId = resolveProductId();
+    if (!productId) {
+      setMessage(
+        `This ${cycle} plan is not configured. Set the matching NEXT_PUBLIC_DODO_*_${cycle === "yearly" ? "YEAR" : "MONTH"}_ID value in .env.local`,
+      );
+      return;
+    }
+
+    const token = await getValidAccessToken();
+    if (!token) {
+      setMessage("Please sign in before upgrading your plan.");
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("productId", productId);
+    params.set("quantity", "1");
+
+    const user = authService.getUser?.() as
+      | { email?: string; name?: string }
+      | undefined;
+    if (user?.email) params.set("email", user.email);
+    if (user?.name) params.set("fullName", user.name);
+
+    try {
+      const res = await fetch(`/checkout?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error ?? `Checkout failed: ${res.status}`);
+      }
+      const data = (await res.json()) as Record<string, unknown>;
+      const url = String(
+        (data as Record<string, unknown>).checkout_url ??
+          (data as Record<string, unknown>).url ??
+          "",
+      );
+      if (!url) throw new Error("No checkout_url returned");
+      window.location.href = url;
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to start checkout";
+      setMessage(msg);
+    }
   };
 
   return (
@@ -407,7 +477,14 @@ function CheckoutModal({
           }}
         >
           <div>
-            <p style={{ color: "#1d4ed8", fontWeight: 900, fontSize: 12, marginBottom: 5 }}>
+            <p
+              style={{
+                color: "#1d4ed8",
+                fontWeight: 900,
+                fontSize: 12,
+                marginBottom: 5,
+              }}
+            >
               SECURE CHECKOUT
             </p>
             <h3 style={{ fontSize: 26, fontWeight: 950, margin: 0 }}>
@@ -449,17 +526,24 @@ function CheckoutModal({
                 border: "1px solid #dbeafe",
               }}
             >
-              <p style={{ color: "#64748b", fontWeight: 800, fontSize: 13 }}>Plan</p>
+              <p style={{ color: "#64748b", fontWeight: 800, fontSize: 13 }}>
+                Plan
+              </p>
               <h4 style={{ fontSize: 24, fontWeight: 950, margin: "6px 0" }}>
                 {plan.name}
               </h4>
               <div style={{ margin: "14px 0" }}>
-                <span style={{ fontSize: 36, fontWeight: 950 }}>{plan.price}</span>
-                <span style={{ color: "#64748b", fontWeight: 800 }}> / {plan.period}</span>
+                <span style={{ fontSize: 36, fontWeight: 950 }}>
+                  {billingPrice}
+                </span>
+                <span style={{ color: "#64748b", fontWeight: 800 }}>
+                  {" "}
+                  / {billingPeriod}
+                </span>
               </div>
               <p style={{ color: "#64748b", lineHeight: 1.6, fontSize: 14 }}>
-                Your subscription renews monthly. You can cancel before the next
-                billing cycle.
+                Your subscription renews {cycle}. You can cancel before the
+                next billing cycle.
               </p>
             </div>
 
@@ -480,49 +564,77 @@ function CheckoutModal({
           </div>
 
           <div style={{ padding: 24 }}>
-            <p style={{ fontWeight: 900, marginBottom: 14 }}>Choose payment gateway</p>
-            <div style={{ display: "grid", gap: 11 }}>
-              {gateways.map((item) => (
+            <p style={{ fontWeight: 900, marginBottom: 14 }}>
+              Billing cycle
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                marginBottom: 18,
+              }}
+            >
+              {(["monthly", "yearly"] as const).map((item) => (
                 <button
-                  key={item.id}
+                  key={item}
                   type="button"
                   onClick={() => {
-                    setGateway(item.id);
+                    setCycle(item);
                     setMessage("");
                   }}
                   style={{
-                    display: "flex",
-                    gap: 12,
-                    alignItems: "center",
-                    textAlign: "left",
-                    padding: 14,
-                    borderRadius: 16,
+                    minHeight: 42,
+                    borderRadius: 14,
                     border:
-                      gateway === item.id ? "2px solid #1d4ed8" : "1px solid #e2e8f0",
-                    background: gateway === item.id ? "#eff6ff" : "#fff",
+                      cycle === item
+                        ? "2px solid #1d4ed8"
+                        : "1px solid #e2e8f0",
+                    background: cycle === item ? "#eff6ff" : "#fff",
+                    color: cycle === item ? "#1d4ed8" : "#334155",
+                    fontWeight: 900,
+                    textTransform: "capitalize",
                     cursor: "pointer",
                   }}
                 >
-                  <span
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 13,
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#1d4ed8",
-                      background: "#dbeafe",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <item.icon size={20} />
-                  </span>
-                  <span>
-                    <strong style={{ display: "block", color: "#0f172a" }}>{item.title}</strong>
-                    <small style={{ color: "#64748b", lineHeight: 1.4 }}>{item.desc}</small>
-                  </span>
+                  {item}
                 </button>
               ))}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                padding: 14,
+                borderRadius: 16,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+              }}
+            >
+              <span
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 13,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "#1d4ed8",
+                  background: "#dbeafe",
+                  flexShrink: 0,
+                }}
+              >
+                <Lock size={20} />
+              </span>
+              <span>
+                <strong style={{ display: "block", color: "#0f172a" }}>
+                  Dodo hosted checkout
+                </strong>
+                <small style={{ color: "#64748b", lineHeight: 1.4 }}>
+                  Payment method selection happens on the secure checkout page.
+                </small>
+              </span>
             </div>
 
             {message && (
@@ -559,7 +671,7 @@ function CheckoutModal({
                 boxShadow: "0 14px 30px rgba(29,78,216,0.25)",
               }}
             >
-              Continue to Pay {plan.price}
+              Continue to Pay {billingPrice}
             </button>
           </div>
         </div>

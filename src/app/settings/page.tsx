@@ -3,8 +3,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Lock, Pencil, User } from "lucide-react";
+import { ArrowLeft, CreditCard, Lock, Pencil, User } from "lucide-react";
 import { authService } from "../../services/authService";
+import { getValidAccessToken } from "../../services/authSession";
 import { useTranslation } from "../../i18n/useTranslation";
 
 export default function SettingsPage() {
@@ -12,6 +13,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState(authService.getUser());
   const [busy, setBusy] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
   const [toast, setToast] = useState("");
 
   const [nameOpen, setNameOpen] = useState(false);
@@ -42,7 +44,8 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const displayName = user?.name?.trim() || user?.email || t("accountSignedInFallback");
+  const displayName =
+    user?.name?.trim() || user?.email || t("accountSignedInFallback");
 
   const saveName = async (event: FormEvent) => {
     event.preventDefault();
@@ -80,6 +83,47 @@ export default function SettingsPage() {
     router.replace("/login");
   };
 
+  const openBillingPortal = async () => {
+    setBillingBusy(true);
+    setToast("");
+
+    try {
+      const token = await getValidAccessToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const response = await fetch("/customer-portal?send_email=false", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        portal_url?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Could not open billing portal.");
+      }
+
+      if (!data.portal_url) {
+        throw new Error("Billing portal URL was not returned.");
+      }
+
+      window.location.href = data.portal_url;
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "Could not open billing portal.",
+      );
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
   return (
     <main className="settings-page">
       <div className="settings-card">
@@ -104,11 +148,21 @@ export default function SettingsPage() {
         </section>
 
         <div className="actions">
-          <button type="button" className="btn secondary" disabled={busy} onClick={() => setNameOpen(true)}>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={busy}
+            onClick={() => setNameOpen(true)}
+          >
             <Pencil size={16} />
             {t("settingsEditProfileDialogTitle")}
           </button>
-          <button type="button" className="btn secondary" disabled={busy} onClick={() => setResetOpen(true)}>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={busy}
+            onClick={() => setResetOpen(true)}
+          >
             <Lock size={16} />
             {t("settingsResetPassword")}
           </button>
@@ -134,14 +188,42 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <button type="button" className="btn danger" disabled={busy} onClick={onSignOut}>
+        <section className="section">
+          <h3>Billing</h3>
+          <div className="actions" style={{ gridTemplateColumns: "1fr" }}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy || billingBusy}
+              onClick={openBillingPortal}
+            >
+              <CreditCard size={16} />
+              Manage billing
+            </button>
+          </div>
+        </section>
+
+        <button
+          type="button"
+          className="btn danger"
+          disabled={busy}
+          onClick={onSignOut}
+        >
           {t("settingsSignOut")}
         </button>
       </div>
 
       {nameOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => !busy && setNameOpen(false)}>
-          <div className="modal" role="dialog" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => !busy && setNameOpen(false)}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3>{t("settingsEditProfileDialogTitle")}</h3>
             <p className="muted">{t("settingsEditNameSubtitle")}</p>
             <form onSubmit={saveName}>
@@ -155,7 +237,12 @@ export default function SettingsPage() {
                 />
               </label>
               <div className="modal-actions">
-                <button type="button" className="btn ghost" disabled={busy} onClick={() => setNameOpen(false)}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={busy}
+                  onClick={() => setNameOpen(false)}
+                >
                   {t("dialogCancel")}
                 </button>
                 <button type="submit" className="btn primary" disabled={busy}>
@@ -168,8 +255,16 @@ export default function SettingsPage() {
       )}
 
       {resetOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => !busy && setResetOpen(false)}>
-          <div className="modal" role="dialog" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => !busy && setResetOpen(false)}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3>{t("loginForgotPasswordDialogTitle")}</h3>
             <p className="muted">{t("settingsResetPasswordDialogSubtitle")}</p>
             <form onSubmit={sendReset}>
@@ -183,7 +278,12 @@ export default function SettingsPage() {
                 />
               </label>
               <div className="modal-actions">
-                <button type="button" className="btn ghost" disabled={busy} onClick={() => setResetOpen(false)}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={busy}
+                  onClick={() => setResetOpen(false)}
+                >
                   {t("dialogCancel")}
                 </button>
                 <button type="submit" className="btn primary" disabled={busy}>
