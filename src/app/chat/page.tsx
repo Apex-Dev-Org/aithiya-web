@@ -9,7 +9,6 @@ import {
   Home,
   Loader2,
   Menu,
-  Mic,
   Paperclip,
   Pin,
   PinOff,
@@ -67,7 +66,6 @@ export default function ChatPage() {
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
-  const [listening, setListening] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [threadsError, setThreadsError] = useState("");
   const [threadsLoading, setThreadsLoading] = useState(false);
@@ -571,14 +569,6 @@ export default function ChatPage() {
               rows={1}
               placeholder={t("chatComposerPlaceholder")}
             />
-
-            <button
-              className={`tool-btn mic-btn ${listening ? "listening" : ""}`}
-              onClick={() => setListening((prev) => !prev)}
-              aria-label={t("chatToggleMic")}
-            >
-              <Mic size={19} />
-            </button>
 
             <button className="send-btn" onClick={handleSend} disabled={loading || (!input.trim() && attachments.length === 0)}>
               {loading ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
@@ -1254,12 +1244,7 @@ export default function ChatPage() {
           transform: translateY(-1px);
         }
 
-        .mic-btn.listening {
-          color: #fff;
-          background: #ef4444;
-          box-shadow: 0 0 0 8px rgba(239,68,68,.12);
-          animation: micPulse 1.4s infinite;
-        }
+
 
         .send-btn {
           color: #fff;
@@ -1296,10 +1281,7 @@ export default function ChatPage() {
           40% { transform: translateY(-5px); opacity: 1; }
         }
 
-        @keyframes micPulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
+
 
         @keyframes spin {
           to { transform: rotate(360deg); }
