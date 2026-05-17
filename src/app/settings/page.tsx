@@ -3,10 +3,36 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CreditCard, Lock, Pencil, User } from "lucide-react";
+import {
+  ArrowLeft,
+  CreditCard,
+  Lock,
+  Pencil,
+  RefreshCw,
+  Sparkles,
+  User,
+} from "lucide-react";
 import { authService } from "../../services/authService";
 import { getValidAccessToken } from "../../services/authSession";
 import { useTranslation } from "../../i18n/useTranslation";
+
+type BillingStatus = {
+  plan: "free" | "pro" | "ultra";
+  status: string | null;
+  cycle: "monthly" | "yearly" | null;
+  current_period_end: string | null;
+  cancel_at_next_billing_date: boolean;
+  has_billing_customer: boolean;
+};
+
+const DEFAULT_BILLING_STATUS: BillingStatus = {
+  plan: "free",
+  status: null,
+  cycle: null,
+  current_period_end: null,
+  cancel_at_next_billing_date: false,
+  has_billing_customer: false,
+};
 
 export default function SettingsPage() {
   const { t, locale, setLocale } = useTranslation();
@@ -14,6 +40,8 @@ export default function SettingsPage() {
   const [user, setUser] = useState(authService.getUser());
   const [busy, setBusy] = useState(false);
   const [billingBusy, setBillingBusy] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billing, setBilling] = useState<BillingStatus>(DEFAULT_BILLING_STATUS);
   const [toast, setToast] = useState("");
 
   const [nameOpen, setNameOpen] = useState(false);
@@ -27,6 +55,48 @@ export default function SettingsPage() {
       router.replace("/login");
     }
   }, [router]);
+
+  const loadBillingStatus = async () => {
+    setBillingLoading(true);
+    setToast("");
+    try {
+      const token = await getValidAccessToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const response = await fetch("/api/billing/status", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = (await response.json().catch(() => ({}))) as
+        | Partial<BillingStatus>
+        | { error?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in data && data.error
+            ? data.error
+            : "Could not load billing status.",
+        );
+      }
+
+      setBilling({
+        ...DEFAULT_BILLING_STATUS,
+        ...(data as Partial<BillingStatus>),
+      });
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "Could not load billing status.",
+      );
+    } finally {
+      setBillingLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +112,16 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      queueMicrotask(() => {
+        void loadBillingStatus();
+      });
+    }
+    // Run once on page entry; billing can be manually refreshed after checkout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const displayName =
@@ -84,6 +164,11 @@ export default function SettingsPage() {
   };
 
   const openBillingPortal = async () => {
+    if (!billing.has_billing_customer) {
+      setToast("Upgrade to a paid plan first to create your billing profile.");
+      return;
+    }
+
     setBillingBusy(true);
     setToast("");
 
@@ -123,6 +208,11 @@ export default function SettingsPage() {
       setBillingBusy(false);
     }
   };
+
+  const planLabel = formatPlanLabel(billing.plan);
+  const statusLabel = formatStatusLabel(billing.status, billing.plan);
+  const renewsAt = formatDate(billing.current_period_end);
+  const isPaid = billing.plan !== "free" && billing.status === "active";
 
   return (
     <main className="settings-page">
@@ -188,19 +278,76 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="section">
-          <h3>Billing</h3>
-          <div className="actions" style={{ gridTemplateColumns: "1fr" }}>
+        <section className="section billing-section">
+          <div className="section-heading">
+            <h3>Billing</h3>
+            <button
+              type="button"
+              className="icon-btn"
+              disabled={billingLoading}
+              onClick={loadBillingStatus}
+              aria-label="Refresh billing status"
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
+
+          <div className="billing-card">
+            <div>
+              <p className="eyebrow">Current plan</p>
+              <h2>{planLabel}</h2>
+              <p className="muted">
+                {billingLoading
+                  ? "Checking your billing status..."
+                  : billing.plan === "free"
+                    ? "Upgrade when you need document analysis, higher limits, or premium features."
+                    : billing.cancel_at_next_billing_date
+                      ? "Your plan is active until the end of the current billing period."
+                      : "Your plan is synced from Dodo after checkout is confirmed."}
+              </p>
+            </div>
+            <span className={isPaid ? "status-pill active" : "status-pill"}>
+              {statusLabel}
+            </span>
+          </div>
+
+          <div className="billing-details">
+            <div>
+              <span>Billing cycle</span>
+              <strong>{billing.cycle ? capitalize(billing.cycle) : "None"}</strong>
+            </div>
+            <div>
+              <span>Next renewal</span>
+              <strong>
+                {billing.cancel_at_next_billing_date
+                  ? "Cancels at period end"
+                  : renewsAt}
+              </strong>
+            </div>
+          </div>
+
+          <div className="actions billing-actions">
+            <Link href="/#pricing" className="btn secondary">
+              <Sparkles size={16} />
+              {billing.plan === "free" ? "View plans" : "Change plan"}
+            </Link>
             <button
               type="button"
               className="btn primary"
-              disabled={busy || billingBusy}
+              disabled={busy || billingBusy || !billing.has_billing_customer}
               onClick={openBillingPortal}
             >
               <CreditCard size={16} />
-              Manage billing
+              {billingBusy ? "Opening..." : "Manage billing"}
             </button>
           </div>
+
+          {!billing.has_billing_customer && (
+            <p className="billing-note">
+              The billing portal becomes available after your first successful
+              paid checkout. If you just paid, wait a few seconds and refresh.
+            </p>
+          )}
         </section>
 
         <button
@@ -382,6 +529,100 @@ export default function SettingsPage() {
           margin: 0 0 10px;
           font-size: 15px;
         }
+        .section-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .icon-btn {
+          width: 34px;
+          height: 34px;
+          display: grid;
+          place-items: center;
+          border-radius: 12px;
+          border: 1px solid #dbeafe;
+          color: #1d4ed8;
+          background: #eff6ff;
+          cursor: pointer;
+        }
+        .icon-btn:disabled {
+          opacity: .6;
+          cursor: not-allowed;
+        }
+        .billing-section {
+          margin-bottom: 22px;
+        }
+        .billing-card {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 16px;
+          border-radius: 18px;
+          background: rgba(248,250,252,.9);
+          border: 1px solid rgba(226,232,240,.95);
+          margin-bottom: 10px;
+        }
+        .billing-card h2 {
+          margin: 3px 0 6px;
+          font-size: 24px;
+        }
+        .eyebrow {
+          margin: 0;
+          color: #1d4ed8;
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: .08em;
+          text-transform: uppercase;
+        }
+        .status-pill {
+          flex-shrink: 0;
+          border-radius: 999px;
+          padding: 7px 10px;
+          background: #f1f5f9;
+          color: #475569;
+          font-size: 12px;
+          font-weight: 900;
+        }
+        .status-pill.active {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .billing-details {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .billing-details div {
+          padding: 12px;
+          border-radius: 14px;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+        }
+        .billing-details span {
+          display: block;
+          margin-bottom: 4px;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: .05em;
+        }
+        .billing-details strong {
+          font-size: 13px;
+        }
+        .billing-actions {
+          grid-template-columns: 1fr 1fr;
+          margin-bottom: 0;
+        }
+        .billing-note {
+          margin: 10px 0 0;
+          color: #64748b;
+          font-size: 12px;
+          line-height: 1.5;
+        }
         .pills {
           display: flex;
           gap: 10px;
@@ -411,6 +652,7 @@ export default function SettingsPage() {
           align-items: center;
           justify-content: center;
           gap: 8px;
+          text-decoration: none;
         }
         .btn:disabled {
           opacity: .65;
@@ -489,4 +731,53 @@ export default function SettingsPage() {
       `}</style>
     </main>
   );
+}
+
+function formatPlanLabel(plan: BillingStatus["plan"]) {
+  switch (plan) {
+    case "pro":
+      return "Pro";
+    case "ultra":
+      return "Ultra";
+    default:
+      return "Free";
+  }
+}
+
+function formatStatusLabel(
+  status: BillingStatus["status"],
+  plan: BillingStatus["plan"],
+) {
+  if (!status) return plan === "free" ? "Free plan" : "Unknown";
+  switch (status) {
+    case "active":
+      return "Active";
+    case "pending":
+      return "Pending";
+    case "on_hold":
+      return "On hold";
+    case "cancelled":
+      return "Cancelled";
+    case "expired":
+      return "Expired";
+    case "failed":
+      return "Payment failed";
+    default:
+      return capitalize(status.replaceAll("_", " "));
+  }
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Not scheduled";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-LK", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

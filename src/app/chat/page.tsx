@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
@@ -987,6 +987,59 @@ export default function ChatPage() {
           border-bottom-left-radius: 7px;
         }
 
+        .assistant-markdown {
+          display: grid;
+          gap: 10px;
+        }
+
+        .assistant-markdown h3,
+        .assistant-markdown h4,
+        .assistant-markdown p,
+        .assistant-markdown ul,
+        .assistant-markdown ol {
+          margin: 0;
+        }
+
+        .assistant-markdown h3 {
+          font-size: 16px;
+          line-height: 1.35;
+          color: #0f172a;
+        }
+
+        .assistant-markdown h4 {
+          font-size: 14px;
+          line-height: 1.4;
+          color: #1e293b;
+        }
+
+        .assistant-markdown ul,
+        .assistant-markdown ol {
+          padding-left: 20px;
+          display: grid;
+          gap: 6px;
+        }
+
+        .assistant-markdown li {
+          padding-left: 2px;
+        }
+
+        .assistant-markdown strong {
+          font-weight: 850;
+          color: #0f172a;
+        }
+
+        .assistant-markdown em {
+          color: #334155;
+        }
+
+        .assistant-markdown code {
+          padding: 2px 5px;
+          border-radius: 7px;
+          background: rgba(226,232,240,.85);
+          color: #0f172a;
+          font-size: .92em;
+        }
+
         .bubble.user {
           border-bottom-right-radius: 7px;
           color: #082f49;
@@ -1322,7 +1375,7 @@ function MessageBubble({ msg, index }: { msg: Message; index: number }) {
 
       <div className="message-stack">
         <div className={`bubble ${isUser ? "user" : "ai glass-card"}`}>
-          {msg.content}
+          {isUser ? msg.content : <AssistantMessageContent content={msg.content} />}
           {msg.attachments && msg.attachments.length > 0 && (
             <div className="message-attachments">
               {msg.attachments.map((file) => (
@@ -1349,6 +1402,104 @@ function MessageBubble({ msg, index }: { msg: Message; index: number }) {
       </div>
     </div>
   );
+}
+
+function AssistantMessageContent({ content }: { content: string }) {
+  const normalized = content.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return null;
+
+  const lines = normalized.split("\n");
+  const blocks: ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) {
+      i += 1;
+      continue;
+    }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      const Tag = heading[1].length === 1 ? "h3" : "h4";
+      blocks.push(
+        <Tag key={`h-${i}`}>{renderInlineMarkdown(heading[2])}</Tag>
+      );
+      i += 1;
+      continue;
+    }
+
+    const unordered = /^[-*•]\s+(.+)$/.exec(trimmed);
+    const ordered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+    if (unordered || ordered) {
+      const orderedList = Boolean(ordered);
+      const items: string[] = [];
+      while (i < lines.length) {
+        const line = lines[i].trim();
+        const match = orderedList
+          ? /^\d+[.)]\s+(.+)$/.exec(line)
+          : /^[-*•]\s+(.+)$/.exec(line);
+        if (!match) break;
+        items.push(match[1]);
+        i += 1;
+      }
+      const ListTag = orderedList ? "ol" : "ul";
+      blocks.push(
+        <ListTag key={`list-${i}`}>
+          {items.map((item, itemIndex) => (
+            <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ListTag>
+      );
+      continue;
+    }
+
+    const paragraph: string[] = [];
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (!line) break;
+      if (/^(#{1,3})\s+/.test(line)) break;
+      if (/^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) break;
+      paragraph.push(line);
+      i += 1;
+    }
+
+    blocks.push(
+      <p key={`p-${i}`}>{renderInlineMarkdown(paragraph.join(" "))}</p>
+    );
+  }
+
+  return <div className="assistant-markdown">{blocks}</div>;
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(`[^`]+`|\*\*[^*]+?\*\*|\*[^*\n]+?\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const key = `${match.index}-${token.length}`;
+    if (token.startsWith("`")) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("**")) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    }
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
 }
 
 function GuidanceSummary({ msg }: { msg: Message }) {

@@ -97,13 +97,20 @@ export default function AuthScreen({
       if (onAuthenticated) {
         onAuthenticated();
       } else {
-        window.location.href = "/chat";
+        window.location.href = getSafeNextPath() ?? "/chat";
       }
     } catch {
       setError(t("authError"));
     } finally {
       setLoading(false);
     }
+  };
+
+  const startGoogleLogin = () => {
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    authService.signInWithGoogle(getSafeNextPath() ?? "/chat");
   };
 
   return (
@@ -271,7 +278,8 @@ export default function AuthScreen({
           <button
             className="google-btn"
             type="button"
-            onClick={() => setError(t("googleNotConnected"))}
+            disabled={loading}
+            onClick={startGoogleLogin}
           >
             <span>G</span>
             {t("continueWithGoogle")}
@@ -584,6 +592,11 @@ export default function AuthScreen({
           transform: none;
         }
 
+        .google-btn:disabled {
+          opacity: .72;
+          cursor: not-allowed;
+        }
+
         .auth-divider {
           display: flex;
           align-items: center;
@@ -677,6 +690,15 @@ export default function AuthScreen({
       `}</style>
     </main>
   );
+}
+
+function getSafeNextPath() {
+  if (typeof window === "undefined") return undefined;
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return undefined;
+  }
+  return next;
 }
 
 function AuthField({

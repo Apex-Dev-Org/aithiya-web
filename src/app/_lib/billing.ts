@@ -31,6 +31,8 @@ export type UserSubscription = {
   plan: "free" | PaidPlanCode;
   status: SubscriptionStatus;
   current_period_end: string | null;
+  cancel_at_next_billing_date: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 type SupabaseConfig = {
@@ -170,7 +172,7 @@ export async function getUserSubscription(userId: string) {
       search: {
         user_id: `eq.${userId}`,
         select:
-          "user_id,dodo_customer_id,dodo_subscription_id,dodo_product_id,plan,status,current_period_end",
+          "user_id,dodo_customer_id,dodo_subscription_id,dodo_product_id,plan,status,current_period_end,cancel_at_next_billing_date,metadata",
         limit: "1",
       },
     },

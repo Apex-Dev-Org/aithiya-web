@@ -5,7 +5,7 @@ type SupabaseAuthConfig = {
   anonKey: string;
 };
 
-function normalizeHttpUrl(raw: string) {
+export function normalizeHttpUrl(raw: string) {
   const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   const parsed = new URL(withProtocol);
 
@@ -19,7 +19,7 @@ function normalizeHttpUrl(raw: string) {
   return parsed.toString().replace(/\/+$/, "");
 }
 
-function requestOrigin(request: Request) {
+export function getRequestOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (origin) return origin;
 
@@ -62,7 +62,7 @@ export function supabaseAuthHeaders(anonKey: string, bearerToken = anonKey) {
 
 export function getResetPasswordRedirectUrl(request: Request) {
   const rawOrigin =
-    requestOrigin(request) ??
+    getRequestOrigin(request) ??
     process.env.NEXT_PUBLIC_APP_URL?.trim() ??
     "http://localhost:3000";
 

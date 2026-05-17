@@ -90,8 +90,23 @@ export const authService = {
     this.clearToken();
   },
 
+  signInWithGoogle(next = "/chat") {
+    if (typeof window === "undefined") return;
+
+    const path = getSafeNextPath(next) ?? "/chat";
+    const target = new URL("/api/auth/google", window.location.origin);
+    target.searchParams.set("next", path);
+    window.location.assign(target.toString());
+  },
+
   isAuthenticated() {
     return Boolean(this.getToken());
+  },
+
+  async completeOAuthSession(payload: SupabaseAuthPayload) {
+    const token = storeAuthSession(payload);
+    if (!token) throw new Error("No token returned from auth provider.");
+    await this.refreshProfileFromApi();
   },
 
   async refreshProfileFromApi() {
@@ -173,6 +188,14 @@ export const authService = {
     await this.refreshProfileFromApi().catch(() => {});
   },
 };
+
+function getSafeNextPath(next: string) {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return undefined;
+  }
+
+  return next;
+}
 
 function mergeUserFromMe(me: Record<string, unknown>) {
   const existing = authService.getUser() ?? {};

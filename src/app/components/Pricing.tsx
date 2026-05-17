@@ -177,7 +177,13 @@ export default function Pricing() {
             <PlanCard
               key={plan.name}
               {...plan}
-              onUpgrade={() => setCheckoutPlan(plan)}
+              onUpgrade={() => {
+                if (!authService.isAuthenticated()) {
+                  window.location.href = `/login?next=${encodeURIComponent("/#pricing")}`;
+                  return;
+                }
+                setCheckoutPlan(plan);
+              }}
             />
           ))}
         </div>
@@ -196,6 +202,23 @@ export default function Pricing() {
           Prices are shown in Sri Lankan Rupees and exclude any applicable
           taxes. Aythiya provides legal information and guidance, not formal
           legal representation.
+        </p>
+        <p
+          className="reveal-up"
+          style={{
+            textAlign: "center",
+            color: "#64748b",
+            fontSize: 13,
+            lineHeight: 1.7,
+            margin: "10px auto 0",
+          }}
+        >
+          Already subscribed? Manage payment methods, invoices, and
+          cancellations from{" "}
+          <a href="/settings" style={{ color: "#1d4ed8", fontWeight: 900 }}>
+            Settings
+          </a>
+          .
         </p>
       </div>
 
@@ -302,7 +325,9 @@ function PlanCard({
         type="button"
         onClick={() => {
           if (isFree) {
-            window.location.href = "/chat";
+            window.location.href = authService.isAuthenticated()
+              ? "/chat"
+              : `/login?next=${encodeURIComponent("/chat")}`;
             return;
           }
           onUpgrade();
